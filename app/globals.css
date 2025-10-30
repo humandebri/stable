@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 210 20% 94%;
+  --foreground: 220 18% 18%;
+  --muted: 210 20% 92%;
+  --muted-foreground: 220 10% 40%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 18% 18%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 18% 18%;
+  --border: 215 16% 80%;
+  --input: 215 16% 80%;
+  --primary: 220 25% 35%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 18% 88%;
+  --secondary-foreground: 220 18% 24%;
+  --accent: 210 14% 84%;
+  --accent-foreground: 220 18% 24%;
+  --destructive: 0 75% 45%;
+  --destructive-foreground: 0 0% 100%;
+  --ring: 220 25% 45%;
+  --radius: 0.9rem;
+}
+
+.dark {
+  --background: 222.2 47.4% 11.2%;
+  --foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --popover: 222.2 47.4% 9.2%;
+  --popover-foreground: 210 40% 98%;
+  --card: 222.2 40% 9.6%;
+  --card-foreground: 210 40% 98%;
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --primary: 210 40% 96%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --accent: 215 25% 21%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --ring: 215 20.2% 65.1%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground min-h-screen antialiased;
+    font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", sans-serif;
+    background-image: radial-gradient(
+        circle at top left,
+        rgba(255, 255, 255, 0.85),
+        transparent 55%
+      ),
+      radial-gradient(
+        circle at bottom right,
+        rgba(210, 220, 230, 0.8),
+        transparent 50%
+      );
+    background-attachment: fixed;
+  }
+}
