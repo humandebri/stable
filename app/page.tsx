@@ -80,9 +80,22 @@ export default function HomePage() {
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-4">
       <section className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-foreground">
-            ウォレット接続
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-foreground">
+              ウォレット接続
+            </h2>
+            {address ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="rounded-full bg-muted px-3 py-1 font-semibold uppercase tracking-wide text-muted-foreground">
+                  {accountStatus}
+                </span>
+                <span className="rounded-md bg-secondary px-3 py-1 text-sm font-medium text-secondary-foreground">
+                  {truncateAddress(address)}
+                </span>
+              </div>
+            ) : null}
+          </div>
+
           {address ? (
             <Button
               variant="outline"
@@ -97,23 +110,6 @@ export default function HomePage() {
 
         {address ? (
           <div className="flex flex-col gap-3 text-sm text-muted-foreground">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {accountStatus}
-              </span>
-              <span className="rounded-md bg-secondary px-3 py-1 text-sm font-medium text-secondary-foreground">
-                {truncateAddress(address)}
-              </span>
-              <span className="rounded-md border border-border px-3 py-1 text-sm text-foreground">
-                #{chainId}
-              </span>
-              {walletClient ? (
-                <span className="text-xs">
-                  {walletClient.transport?.name ?? "provider"}
-                </span>
-              ) : null}
-            </div>
-
             {switchChain ? (
               <div className="flex flex-wrap items-center gap-2">
                 {chains.map((chain) => (
@@ -142,6 +138,7 @@ export default function HomePage() {
                 size="sm"
                 type="button"
                 disabled={!preferredConnector || isPending}
+                className="w-full sm:w-auto sm:px-4"
               >
                 {isPending ? "接続中..." : "ウォレット接続"}
               </Button>
@@ -155,17 +152,18 @@ export default function HomePage() {
               </DialogHeader>
 
               <div className="grid gap-2 text-sm">
-                {["WalletConnect", "Injected", "Coinbase Wallet", "Rabby Wallet", "Phantom"].map(
+                {["WalletConnect", "Injected", "Coinbase Wallet", "Rabby Wallet"].map(
                   (label) => {
                     const connector =
                       label === "WalletConnect"
                         ? walletConnectConnector
                         : availableConnectors.find(
-                            (c) => c.name === label || c.id === label.toLowerCase().replace(/\s+/g, "-")
+                            (c) =>
+                              c.name === label ||
+                              c.id === label.toLowerCase().replace(/\s+/g, "-")
                           );
 
                     const isSupported = Boolean(connector);
-                    const isPhantom = label === "Phantom";
 
                     return (
                       <Button
@@ -174,14 +172,12 @@ export default function HomePage() {
                         type="button"
                         variant="outline"
                         className="justify-between"
-                        disabled={isPhantom || !isSupported || isPending}
+                        disabled={!isSupported || isPending}
                         onClick={() => connector && connect({ connector })}
                       >
                         <span>{label}</span>
                         <span className="text-xs text-muted-foreground">
-                          {isPhantom
-                            ? "近日対応"
-                            : connector?.id ?? "not available"}
+                          {connector?.id ?? "not available"}
                         </span>
                       </Button>
                     );
@@ -213,14 +209,7 @@ export default function HomePage() {
 
       <Card className="border-border/80 bg-card shadow-xl">
         <CardContent>
-          {address ? (
-            <CreateJobForm />
-          ) : (
-            <div className="rounded-md border border-dashed border-muted-foreground/40 bg-muted/20 p-6 text-sm text-muted-foreground">
-              送金チケットの作成にはウォレット接続が必要です。上部のカードから WalletConnect
-              で接続してください。
-            </div>
-          )}
+          <CreateJobForm disabled={!address} />
         </CardContent>
       </Card>
     </main>

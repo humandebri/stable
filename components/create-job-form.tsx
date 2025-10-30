@@ -30,7 +30,6 @@ type FormState = {
   recipient: string;
   amount: string;
   feeAmount: string;
-  feeRecipient: string;
   validDate: string;
   validTime: string;
   tokenIndex: number;
@@ -57,7 +56,6 @@ const DEFAULT_FORM: FormState = {
   recipient: "",
   amount: "",
   feeAmount: "",
-  feeRecipient: "",
   validDate: "",
   validTime: "",
   tokenIndex: 0
@@ -66,10 +64,15 @@ const DEFAULT_FORM: FormState = {
 function formatNowPlusMinutes(minutes: number) {
   const date = new Date(Date.now() + minutes * 60 * 1000);
   date.setSeconds(0, 0);
-  return date.toISOString().slice(0, 16);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
+  return local.toISOString().slice(0, 16);
 }
 
-export function CreateJobForm() {
+type CreateJobFormProps = {
+  disabled?: boolean;
+};
+
+export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
   const chainId = useChainId();
   const { address } = useAccount();
   const { signTypedDataAsync } = useSignTypedData();
@@ -142,6 +145,10 @@ export function CreateJobForm() {
     event.preventDefault();
     setError(null);
 
+     if (disabled) {
+       return;
+     }
+
     if (!address) {
       setError("ウォレットが未接続です。");
       return;
@@ -168,13 +175,7 @@ export function CreateJobForm() {
         throw new Error("手数料金額を入力してください。");
       }
 
-      const feeRecipient =
-        form.feeRecipient.trim().length > 0
-          ? (form.feeRecipient.trim() as `0x${string}`)
-          : address;
-      if (!feeRecipient.startsWith("0x") || feeRecipient.length !== 42) {
-        throw new Error("手数料受取アドレスを正しく入力してください。");
-      }
+      const feeRecipient = address;
 
       if (!form.validDate) {
         throw new Error("有効期限の日付を選択してください。");
@@ -291,10 +292,11 @@ export function CreateJobForm() {
         </div>
       ) : null}
 
-      <form
-        className="grid grid-cols-1 gap-6 md:grid-cols-2"
-        onSubmit={handleSubmit}
-      >
+      <form className="grid grid-cols-1 gap-6 md:grid-cols-2" onSubmit={handleSubmit}>
+        <fieldset
+          disabled={disabled}
+          className="contents disabled:cursor-not-allowed disabled:opacity-60"
+        >
         <div className="grid gap-2 md:col-span-2">
           <Label htmlFor="token">トークン</Label>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
@@ -379,17 +381,10 @@ export function CreateJobForm() {
             onChange={handleFeeAmountChange}
             required
           />
-        </div>
-
-        <div className="grid gap-2 md:col-span-2">
-          <Label htmlFor="feeRecipient">手数料受取アドレス</Label>
-          <Input
-            id="feeRecipient"
-            type="text"
-            placeholder="0x...（未入力なら自分自身）"
-            value={form.feeRecipient}
-            onChange={changeField("feeRecipient")}
-          />
+          <p className="text-xs text-muted-foreground">
+            残高・精度を確認してください。小数点以下
+            {selectedToken ? selectedToken.decimals : 0}桁。
+          </p>
         </div>
 
         <div className="grid gap-2 md:col-span-2">
@@ -449,6 +444,7 @@ export function CreateJobForm() {
             {isSubmitting ? "署名中..." : "署名してチケット生成"}
           </Button>
         </div>
+        </fieldset>
       </form>
 
       {error ? (
