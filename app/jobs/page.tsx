@@ -10,7 +10,7 @@ export default function CreateJobPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-2 px-4 py-10">
-      <Card className="border-border/80 bg-card shadow-xl">
+      <Card className="border-border/80 bg-card shadow-md">
         <CardContent>
           <CreateJobForm disabled={!address} />
         </CardContent>

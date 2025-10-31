@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { isAddress, getAddress } from "viem";
+
 import { assertDeveloperSignature } from "@/lib/api/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
@@ -48,16 +50,17 @@ function parseAction(value: unknown, fallback: ApiKeyAction): ApiKeyAction {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   try {
-    const address = parseString(url.searchParams.get("address"));
-    const nonce = parseString(url.searchParams.get("nonce"));
-    const signature = parseString(url.searchParams.get("signature"));
+    const addressParam = url.searchParams.get("address");
+    if (!addressParam || !isAddress(addressParam)) {
+      throw new Error("Invalid address");
+    }
 
-    const normalizedAddress = await assertDeveloperSignature({
-      action: "list",
-      address,
-      nonce,
-      signature
-    });
+    const fetchSite = request.headers.get("sec-fetch-site");
+    if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "same-site") {
+      throw new Error("Forbidden");
+    }
+
+    const normalizedAddress = getAddress(addressParam).toLowerCase();
 
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase

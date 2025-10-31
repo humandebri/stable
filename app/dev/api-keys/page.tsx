@@ -1,10 +1,19 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { useAccount, useSignMessage } from "wagmi";
+import { useAccount, useWalletClient } from "wagmi";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CopyIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { buildApiKeyMessage } from "@/lib/security/api-keys";
@@ -19,7 +28,8 @@ type DeveloperKey = {
 };
 
 type KeysResponse = {
-  keys: DeveloperKey[];
+  keys?: DeveloperKey[];
+  error?: string;
 };
 
 type CreateKeyResponse = {
@@ -32,8 +42,6 @@ type CreateKeyResponse = {
   };
 };
 
-const SIGNATURE_MESSAGE_WINDOW_MS = 5 * 60 * 1000;
-
 function nowNonce(): string {
   return Date.now().toString();
 }
@@ -44,23 +52,46 @@ function hashSnippetFromKey(key: string): string {
 
 export default function DeveloperApiKeysPage() {
   const { address, isConnected } = useAccount();
-  const { signMessageAsync } = useSignMessage();
+  const { data: walletClient } = useWalletClient();
+  const queryClient = useQueryClient();
 
-  const [keys, setKeys] = useState<DeveloperKey[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [createName, setCreateName] = useState("");
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
+  const [showKeyDialog, setShowKeyDialog] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
 
-  const activeKeys = useMemo(
-    () => keys.filter((key) => !key.revokedAt),
-    [keys]
-  );
+  const enabled = Boolean(isConnected && address);
 
-  const revokedKeys = useMemo(
-    () => keys.filter((key) => Boolean(key.revokedAt)),
-    [keys]
-  );
+  const keysQuery = useQuery<DeveloperKey[]>({
+    queryKey: ["dev-api-keys", address],
+    enabled,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      if (!address) return [];
+      const response = await fetch(`/api/dev/api-keys?address=${address}`);
+      const text = await response.text();
+      let parsed: KeysResponse = {};
+      if (text) {
+        try {
+          parsed = JSON.parse(text) as KeysResponse;
+        } catch {
+          parsed = {};
+        }
+      }
+      if (!response.ok) {
+        throw new Error(parsed.error ?? "APIキーの取得に失敗しました");
+      }
+      return parsed.keys ?? [];
+    }
+  });
+
+  const keys = keysQuery.data ?? [];
+  const activeKeys = useMemo(() => keys.filter((key) => !key.revokedAt), [keys]);
+  const revokedKeys = useMemo(() => keys.filter((key) => Boolean(key.revokedAt)), [keys]);
+  const hasFetched = keysQuery.isFetched;
+  const queryError = keysQuery.error as Error | null;
+  const displayError = localError ?? queryError?.message ?? null;
 
   const requireWallet = useCallback(() => {
     if (!address || !isConnected) {
@@ -70,133 +101,116 @@ export default function DeveloperApiKeysPage() {
   }, [address, isConnected]);
 
   const requestSignature = useCallback(
-    async (action: "list" | "create" | "revoke" | "restore") => {
+    async (action: "create" | "revoke" | "restore") => {
       const walletAddress = requireWallet();
       const nonce = nowNonce();
       const message = buildApiKeyMessage(action, walletAddress, nonce);
-      const signature = await signMessageAsync({ message });
+      if (!walletClient) {
+        throw new Error("ウォレットの署名クライアントが利用できません。");
+      }
+      const signature = await walletClient.signMessage({
+        account: walletAddress,
+        message
+      });
       return { walletAddress, nonce, signature };
     },
-    [requireWallet, signMessageAsync]
+    [requireWallet, walletClient]
   );
 
-  const fetchKeys = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const { walletAddress, nonce, signature } = await requestSignature("list");
-      const params = new URLSearchParams({
-        address: walletAddress,
-        nonce,
-        signature
-      });
-
-      const response = await fetch(`/api/dev/api-keys?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error("APIキーの取得に失敗しました");
-      }
-      const data = (await response.json()) as KeysResponse;
-      setKeys(data.keys ?? []);
-    } catch (fetchError) {
-      setError(
-        fetchError instanceof Error ? fetchError.message : "APIキーの取得に失敗しました"
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, [requestSignature]);
-
-  const handleCreateKey = useCallback(
-    async (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      setGeneratedKey(null);
-      setError(null);
-
-      const trimmed = createName.trim();
-      if (!trimmed) {
-        setError("キー名を入力してください");
-        return;
-      }
-
-      try {
+  const createMutation = useMutation<CreateKeyResponse, Error, string>({
+    mutationFn: async (name) => {
       const { walletAddress, nonce, signature } = await requestSignature("create");
       const response = await fetch("/api/dev/api-keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: trimmed,
-            address: walletAddress,
-            nonce,
-            signature
-          })
-        });
+          name,
+          address: walletAddress,
+          nonce,
+          signature
+        })
+      });
+      const body = await response.json().catch(() => ({} as KeysResponse));
+      if (!response.ok) {
+        throw new Error((body as KeysResponse).error ?? "APIキーの発行に失敗しました");
+      }
+      return body as CreateKeyResponse;
+    },
+    onSuccess: (data) => {
+      setGeneratedKey(data.key);
+      setShowKeyDialog(true);
+      setCreateName("");
+      setLocalError(null);
+      queryClient.invalidateQueries({ queryKey: ["dev-api-keys", address] });
+    },
+    onError: (error) => {
+      setLocalError(error.message);
+    }
+  });
 
-        if (!response.ok) {
-          const json = await response.json().catch(() => ({}));
-          throw new Error(json.error ?? "APIキーの発行に失敗しました");
-        }
-
-        const data = (await response.json()) as CreateKeyResponse;
-        setGeneratedKey(data.key);
-        setCreateName("");
-        setKeys((prev) => [
-          {
-            id: data.record.id,
-            name: data.record.name,
-            hashSnippet: hashSnippetFromKey(data.key),
-            createdAt: data.record.created_at,
-            lastUsedAt: null,
-            revokedAt: null
-          },
-          ...prev
-        ]);
-      } catch (createError) {
-        setError(
-          createError instanceof Error
-            ? createError.message
-            : "APIキーの発行に失敗しました"
-        );
+  const updateMutation = useMutation<void, Error, { id: string; action: "revoke" | "restore" }>({
+    mutationFn: async ({ id, action }) => {
+      const { walletAddress, nonce, signature } = await requestSignature(action);
+      const response = await fetch(`/api/dev/api-keys/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          address: walletAddress,
+          nonce,
+          signature
+        })
+      });
+      const body = await response.json().catch(() => ({} as KeysResponse));
+      if (!response.ok) {
+        throw new Error((body as KeysResponse).error ?? "キーの更新に失敗しました");
       }
     },
-    [createName, fetchKeys, requestSignature]
+    onSuccess: () => {
+      setLocalError(null);
+      queryClient.invalidateQueries({ queryKey: ["dev-api-keys", address] });
+    },
+    onError: (error) => {
+      setLocalError(error.message);
+    }
+  });
+
+  const handleCreateKey = useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      setGeneratedKey(null);
+      setLocalError(null);
+
+      const trimmed = createName.trim();
+      if (!trimmed) {
+        setLocalError("キー名を入力してください");
+        return;
+      }
+
+      createMutation.mutate(trimmed);
+    },
+    [createMutation, createName]
   );
 
   const handleUpdateKey = useCallback(
-    async (id: string, action: "revoke" | "restore") => {
-      try {
-        setError(null);
-        const { walletAddress, nonce, signature } = await requestSignature(action);
-        const response = await fetch(`/api/dev/api-keys/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action,
-            address: walletAddress,
-            nonce,
-            signature
-          })
-        });
-
-        if (!response.ok) {
-          const json = await response.json().catch(() => ({}));
-          throw new Error(json.error ?? "キーの更新に失敗しました");
-        }
-
-        await fetchKeys();
-      } catch (updateError) {
-        setError(
-          updateError instanceof Error
-            ? updateError.message
-            : "キーの更新に失敗しました"
-        );
-      }
+    (id: string, action: "revoke" | "restore") => {
+      setLocalError(null);
+      updateMutation.mutate({ id, action });
     },
-    [fetchKeys, requestSignature]
+    [updateMutation]
   );
 
-  const handleLoadKeys = useCallback(() => {
-    fetchKeys();
-  }, [fetchKeys]);
+  const handleCopy = useCallback(async () => {
+    if (!generatedKey) return;
+    try {
+      await navigator.clipboard.writeText(generatedKey);
+      setCopyFeedback("コピーしました");
+      setTimeout(() => setCopyFeedback(null), 2000);
+    } catch (error) {
+      console.error("Failed to copy API key", error);
+      setCopyFeedback("コピーに失敗しました");
+    }
+  }, [generatedKey]);
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-4 py-10">
@@ -213,15 +227,6 @@ export default function DeveloperApiKeysPage() {
             </p>
           ) : (
             <>
-              <div className="flex flex-wrap items-center gap-3">
-                <Button size="sm" variant="outline" onClick={handleLoadKeys} disabled={isLoading}>
-                  {isLoading ? "読み込み中..." : "キー一覧を読み込む"}
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  署名ウィンドウは {SIGNATURE_MESSAGE_WINDOW_MS / 60000} 分以内に更新する必要があります。
-                </p>
-              </div>
-
               <form onSubmit={handleCreateKey} className="space-y-3 rounded-md border border-border/60 bg-background/80 p-4">
                 <div className="grid gap-2 sm:grid-cols-[150px_1fr] sm:items-center">
                   <Label htmlFor="apiKeyName">キーの用途</Label>
@@ -234,28 +239,27 @@ export default function DeveloperApiKeysPage() {
                   />
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <Button type="submit" size="sm">
-                    APIキーを発行
+                  <Button type="submit" size="sm" disabled={createMutation.isPending}>
+                    {createMutation.isPending ? "発行中..." : "APIキーを発行"}
                   </Button>
-                  {generatedKey ? (
-                    <span className="rounded-md bg-muted px-3 py-1 text-xs font-mono text-foreground">
-                      {generatedKey}
-                    </span>
-                  ) : null}
                   <p className="text-xs text-muted-foreground">
-                    ※キーは発行時にのみ表示されます。安全な場所に保存してください。
+                    ※新しいキーはモーダルに一度だけ表示されます。安全な場所に保存してください。
                   </p>
                 </div>
               </form>
             </>
           )}
 
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {displayError ? <p className="text-sm text-destructive">{displayError}</p> : null}
 
           {isConnected ? (
             <section className="space-y-4">
               <h2 className="text-lg font-semibold text-foreground">有効なキー</h2>
-              {activeKeys.length === 0 ? (
+              {keysQuery.isLoading ? (
+                <p className="text-sm text-muted-foreground">読み込み中...</p>
+              ) : !hasFetched ? (
+                <p className="text-sm text-muted-foreground">キーの一覧を読み込んでください。</p>
+              ) : activeKeys.length === 0 ? (
                 <p className="text-sm text-muted-foreground">有効なキーはありません。</p>
               ) : (
                 <ul className="space-y-3 text-sm text-muted-foreground">
@@ -278,6 +282,7 @@ export default function DeveloperApiKeysPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleUpdateKey(key.id, "revoke")}
+                        disabled={updateMutation.isPending}
                       >
                         無効化
                       </Button>
@@ -287,7 +292,11 @@ export default function DeveloperApiKeysPage() {
               )}
 
               <h2 className="text-lg font-semibold text-foreground">無効化されたキー</h2>
-              {revokedKeys.length === 0 ? (
+              {keysQuery.isLoading ? (
+                <p className="text-sm text-muted-foreground">読み込み中...</p>
+              ) : !hasFetched ? (
+                <p className="text-sm text-muted-foreground">キーの一覧を読み込んでください。</p>
+              ) : revokedKeys.length === 0 ? (
                 <p className="text-sm text-muted-foreground">無効化されたキーはありません。</p>
               ) : (
                 <ul className="space-y-3 text-sm text-muted-foreground">
@@ -308,6 +317,7 @@ export default function DeveloperApiKeysPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleUpdateKey(key.id, "restore")}
+                        disabled={updateMutation.isPending}
                       >
                         再有効化
                       </Button>
@@ -319,6 +329,39 @@ export default function DeveloperApiKeysPage() {
           ) : null}
         </CardContent>
       </Card>
+      <Dialog open={showKeyDialog} onOpenChange={(open) => setShowKeyDialog(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>新しい API キー</DialogTitle>
+            <DialogDescription>
+              下記のキーはこの画面でのみ表示されます。安全な場所に保存してください。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3 rounded-md bg-muted px-3 py-2 font-mono text-sm text-foreground">
+              <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                {generatedKey ?? "(未発行)"}
+              </span>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8"
+                onClick={handleCopy}
+                aria-label="APIキーをコピー"
+              >
+                <CopyIcon className="h-4 w-4" />
+              </Button>
+              {copyFeedback ? (
+                <span className="text-xs text-muted-foreground">{copyFeedback}</span>
+              ) : null}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              閉じた後に再表示することはできません。必要に応じてメモに控えてください。
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

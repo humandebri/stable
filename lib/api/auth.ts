@@ -1,4 +1,4 @@
-import { verifyMessage } from "viem";
+import { isAddress, verifyMessage } from "viem";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
@@ -83,7 +83,7 @@ export async function assertDeveloperSignature({
   nonce,
   signature
 }: DeveloperSignaturePayload): Promise<string> {
-  if (!address || !address.startsWith("0x") || address.length !== 42) {
+  if (!address || !isAddress(address)) {
     throw new Error("Invalid address");
   }
 

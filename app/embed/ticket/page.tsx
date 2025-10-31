@@ -9,7 +9,7 @@ export default function EmbedTicketPage() {
 
   return (
     <main className="flex min-h-screen flex-col bg-background px-4 py-6">
-      <div className="mx-auto w-full max-w-xl rounded-xl border border-border/60 bg-card/95 p-4 shadow-lg">
+      <div className="mx-auto w-full max-w-xl rounded-xl border border-border/60 bg-card/95 p-4 shadow-md">
         <CreateJobForm disabled={!address} variant="embed" />
       </div>
     </main>
