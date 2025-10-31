@@ -13,6 +13,18 @@ const TRANSFER_WITH_AUTHORIZATION_TYPES = {
   ]
 } as const;
 
+const BUNDLE_TYPES = {
+  Bundle: [
+    { name: "payer", type: "address" },
+    { name: "token", type: "address" },
+    { name: "recipient", type: "address" },
+    { name: "mainAmount", type: "uint256" },
+    { name: "feeAmount", type: "uint256" },
+    { name: "paymentId", type: "bytes32" },
+    { name: "deadline", type: "uint256" }
+  ]
+} as const;
+
 export type AuthorizationMessage = {
   from: `0x${string}`;
   to: `0x${string}`;
@@ -34,6 +46,28 @@ export type AuthorizationTypedData = {
   message: AuthorizationMessage;
 };
 
+export type BundleMessage = {
+  payer: `0x${string}`;
+  token: `0x${string}`;
+  recipient: `0x${string}`;
+  mainAmount: bigint;
+  feeAmount: bigint;
+  paymentId: `0x${string}`;
+  deadline: bigint;
+};
+
+export type BundleTypedData = {
+  domain: {
+    name: string;
+    version: string;
+    chainId: number;
+    verifyingContract: `0x${string}`;
+  };
+  types: typeof BUNDLE_TYPES;
+  primaryType: "Bundle";
+  message: BundleMessage;
+};
+
 export function buildAuthorizationTypedData(
   token: SupportedTokenConfig,
   chainId: number,
@@ -48,6 +82,24 @@ export function buildAuthorizationTypedData(
     },
     types: TRANSFER_WITH_AUTHORIZATION_TYPES,
     primaryType: "TransferWithAuthorization",
+    message
+  };
+}
+
+export function buildBundleTypedData(
+  contractAddress: `0x${string}`,
+  chainId: number,
+  message: BundleMessage
+): BundleTypedData {
+  return {
+    domain: {
+      name: "ERC3009Executor",
+      version: "1",
+      chainId,
+      verifyingContract: contractAddress
+    },
+    types: BUNDLE_TYPES,
+    primaryType: "Bundle",
     message
   };
 }

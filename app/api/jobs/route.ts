@@ -3,9 +3,10 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
   AuthorizationRecord,
-  CreateJobRequest,
-  JobRecord
+  BundleRecord,
+  CreateJobRequest
 } from "@/lib/jobs/types";
+import { assertInternalRequest } from "@/lib/api/auth";
 
 type AuthorizationPayload = {
   from: `0x${string}`;
@@ -57,6 +58,36 @@ function normalizeAuthorization(auth: AuthorizationPayload): AuthorizationRecord
   };
 }
 
+function normalizeBundle(bundle: BundleRecord | null | undefined): BundleRecord {
+  if (!bundle) {
+    throw new Error("bundle payload is required");
+  }
+
+  const required = [
+    bundle.payer,
+    bundle.token,
+    bundle.recipient,
+    bundle.mainAmount,
+    bundle.feeAmount,
+    bundle.paymentId,
+    bundle.deadline
+  ];
+
+  if (required.some((value) => value === undefined || value === null)) {
+    throw new Error("bundle payload is missing required fields");
+  }
+
+  return {
+    payer: bundle.payer,
+    token: bundle.token,
+    recipient: bundle.recipient,
+    mainAmount: toStringValue(bundle.mainAmount),
+    feeAmount: toStringValue(bundle.feeAmount),
+    paymentId: bundle.paymentId,
+    deadline: toStringValue(bundle.deadline)
+  };
+}
+
 function validatePayload(payload: CreateJobPayload) {
   if (typeof payload.chainId !== "number" || Number.isNaN(payload.chainId)) {
     throw new Error("chainId must be a number");
@@ -66,34 +97,100 @@ function validatePayload(payload: CreateJobPayload) {
     throw new Error("token is required");
   }
 
-  if (!payload.main || !payload.fee) {
-    throw new Error("main and fee authorizations are required");
+  if (!payload.recipient) {
+    throw new Error("recipient is required");
   }
 
-  const main = normalizeAuthorization(payload.main);
-  const fee = normalizeAuthorization(payload.fee);
+  if (!payload.authorization) {
+    throw new Error("authorization is required");
+  }
 
-  const validBeforeMs = Number(main.validBefore);
+  const recipient = payload.recipient as `0x${string}`;
+  if (!recipient.startsWith("0x") || recipient.length !== 42) {
+    throw new Error("recipient must be a valid address");
+  }
 
-  if (!Number.isFinite(validBeforeMs)) {
+  const authorization = normalizeAuthorization(payload.authorization);
+  const bundle = normalizeBundle(payload.bundle);
+
+  const validBeforeSeconds = Number(authorization.validBefore);
+  if (!Number.isFinite(validBeforeSeconds)) {
     throw new Error("main.validBefore must be a numeric timestamp");
   }
 
-  const expiresAt = new Date(validBeforeMs * 1000);
+  const bundleDeadlineSource = payload.bundleDeadline ?? bundle.deadline;
+  const bundleDeadlineSeconds = Number(bundleDeadlineSource);
+  if (!Number.isFinite(bundleDeadlineSeconds)) {
+    throw new Error("bundle.deadline must be a numeric timestamp");
+  }
+
+  if (!payload.bundleSignature || !payload.bundleSignature.startsWith("0x")) {
+    throw new Error("bundleSignature must be a 0x-prefixed hex string");
+  }
+
+  if (bundle.payer.toLowerCase() !== authorization.from.toLowerCase()) {
+    throw new Error("bundle payer must match authorization signer");
+  }
+
+  if (bundle.token.toLowerCase() !== payload.token.toLowerCase()) {
+    throw new Error("bundle token must match job token");
+  }
+
+  if (bundle.recipient.toLowerCase() !== recipient.toLowerCase()) {
+    throw new Error("bundle recipient must match recipient field");
+  }
+
+  let mainAmount: bigint;
+  let feeAmount: bigint;
+  try {
+    mainAmount = BigInt(payload.mainAmount);
+    feeAmount = BigInt(payload.feeAmount);
+  } catch (error) {
+    throw new Error("mainAmount and feeAmount must be numeric strings");
+  }
+  if (mainAmount == 0n || feeAmount == 0n) {
+    throw new Error("mainAmount and feeAmount must be greater than zero");
+  }
+
+  if (BigInt(bundle.mainAmount) !== mainAmount) {
+    throw new Error("bundle mainAmount must match provided mainAmount");
+  }
+
+  if (BigInt(bundle.feeAmount) !== feeAmount) {
+    throw new Error("bundle feeAmount must match provided feeAmount");
+  }
+
+  const total = mainAmount + feeAmount;
+  if (BigInt(authorization.value) !== total) {
+    throw new Error("authorization value must equal mainAmount + feeAmount");
+  }
+
+  const expiresAt = new Date(validBeforeSeconds * 1000);
 
   return {
     chainId: payload.chainId,
     token: payload.token,
-    main,
-    fee,
+    recipient,
+    authorization,
+    bundle,
+    bundleSignature: payload.bundleSignature,
+    bundleDeadline: bundleDeadlineSeconds,
+    mainAmount: mainAmount.toString(),
+    feeAmount: feeAmount.toString(),
     status: payload.status ?? "pending",
-    x402PaymentId: payload.x402PaymentId ?? null,
-    validBefore: validBeforeMs,
+    x402PaymentId: payload.x402PaymentId ?? bundle.paymentId ?? null,
+    validBefore: validBeforeSeconds,
     expiresAt
   } as const;
 }
 
 export async function POST(request: Request) {
+  try {
+    assertInternalRequest(request);
+  } catch {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   let jobPayload: CreateJobPayload;
 
   try {
@@ -115,6 +212,14 @@ export async function POST(request: Request) {
     );
   }
 
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (normalized.validBefore <= nowSeconds) {
+    return NextResponse.json(
+      { error: "Authorization has already expired" },
+      { status: 400 }
+    );
+  }
+
   try {
     const supabase = createSupabaseServerClient();
     const { error, data } = await supabase
@@ -122,12 +227,22 @@ export async function POST(request: Request) {
       .insert({
         chain_id: normalized.chainId,
         token: normalized.token,
-        main: normalized.main,
-        fee: normalized.fee,
+        recipient: normalized.recipient,
+        authorization_payload: normalized.authorization,
+        main: null,
+        fee: null,
+        bundle: normalized.bundle,
+        bundle_signature: normalized.bundleSignature,
         status: normalized.status,
         x402_payment_id: normalized.x402PaymentId,
         valid_before: normalized.validBefore,
-        expires_at: normalized.expiresAt.toISOString()
+        expires_at: normalized.expiresAt.toISOString(),
+        bundle_deadline: normalized.bundleDeadline,
+        bundle_deadline_at: new Date(
+          normalized.bundleDeadline * 1000
+        ).toISOString(),
+        main_amount: normalized.mainAmount,
+        fee_amount: normalized.feeAmount
       })
       .select()
       .single();
@@ -147,6 +262,11 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
+  try {
+    assertInternalRequest(request);
+  } catch {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
   const limit = Number.parseInt(searchParams.get("limit") ?? "50", 10);

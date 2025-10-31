@@ -13,13 +13,16 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   AuthorizationMessage,
+  BundleMessage,
   buildAuthorizationTypedData,
+  buildBundleTypedData,
   generateNonce,
+  normalizePaymentId,
   parseTokenAmount,
   splitSignature
 } from "@/lib/eip3009";
 import type { SignatureParts } from "@/lib/eip3009";
-import type { AuthorizationRecord } from "@/lib/jobs/types";
+import type { AuthorizationRecord, BundleRecord } from "@/lib/jobs/types";
 import type { SupportedTokenConfig } from "@/lib/tokens";
 import {
   DEFAULT_FEE_AMOUNT,
@@ -47,6 +50,18 @@ function serializeAuthorization(
   };
 }
 
+function serializeBundle(bundle: BundleMessage): BundleRecord {
+  return {
+    payer: bundle.payer,
+    token: bundle.token,
+    recipient: bundle.recipient,
+    mainAmount: bundle.mainAmount.toString(),
+    feeAmount: bundle.feeAmount.toString(),
+    paymentId: bundle.paymentId,
+    deadline: bundle.deadline.toString()
+  };
+}
+
 type FormState = {
   recipient: string;
   amount: string;
@@ -60,8 +75,12 @@ type JobPreview = {
   id?: string;
   chainId: number;
   token: `0x${string}`;
-  main: AuthorizationRecord;
-  fee: AuthorizationRecord;
+  recipient: `0x${string}`;
+  authorization: AuthorizationRecord;
+  bundle: BundleRecord;
+  bundleSignature: string;
+  mainAmount: string;
+  feeAmount: string;
 };
 
 const DEFAULT_FORM: FormState = {
@@ -224,6 +243,10 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
     try {
       setIsSubmitting(true);
 
+      if (!chainId) {
+        throw new Error("チェーン情報を取得できませんでした。ウォレット接続を確認してください。");
+      }
+
       const recipient = form.recipient.trim() as `0x${string}`;
       if (!recipient.startsWith("0x") || recipient.length !== 42) {
         throw new Error("受取人アドレスを正しく入力してください。");
@@ -237,7 +260,7 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
         throw new Error("手数料金額を入力してください。");
       }
 
-      const feeRecipient = FACILITATOR_CONTRACT_ADDRESS as `0x${string}`;
+      const executorAddress = FACILITATOR_CONTRACT_ADDRESS as `0x${string}`;
 
       if (!form.validDate) {
         throw new Error("有効期限の日付を選択してください。");
@@ -263,50 +286,57 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
 
       const mainValue = parseTokenAmount(form.amount, selectedToken.decimals);
       const feeValue = parseTokenAmount(form.feeAmount, selectedToken.decimals);
+      const totalValue = mainValue + feeValue;
 
-      const mainAuth: AuthorizationMessage = {
+      const authorizationMessage: AuthorizationMessage = {
         from: address,
-        to: recipient,
-        value: mainValue,
+        to: executorAddress,
+        value: totalValue,
         validAfter: 0n,
         validBefore,
         nonce: generateNonce()
       };
 
-      const feeAuth: AuthorizationMessage = {
-        from: address,
-        to: feeRecipient,
-        value: feeValue,
-        validAfter: 0n,
-        validBefore,
-        nonce: generateNonce()
+      const authorizationTypedData = buildAuthorizationTypedData(
+        selectedToken,
+        chainId,
+        authorizationMessage
+      );
+
+      const authorizationSignature = await signTypedDataAsync(
+        authorizationTypedData
+      );
+      const authorizationSignatureParts = splitSignature(authorizationSignature);
+
+      const paymentId = normalizePaymentId(generateNonce());
+      const bundleMessage: BundleMessage = {
+        payer: address,
+        token: selectedToken.address,
+        recipient,
+        mainAmount: mainValue,
+        feeAmount: feeValue,
+        paymentId,
+        deadline: validBefore
       };
-
-      const domainMain = buildAuthorizationTypedData(
-        selectedToken,
+      const bundleTypedData = buildBundleTypedData(
+        executorAddress,
         chainId,
-        mainAuth
+        bundleMessage
       );
-      const domainFee = buildAuthorizationTypedData(
-        selectedToken,
-        chainId,
-        feeAuth
-      );
-
-      const mainSignature = await signTypedDataAsync(domainMain);
-      const feeSignature = await signTypedDataAsync({
-        ...domainFee,
-        message: feeAuth
-      });
-
-      const mainSignatureParts = splitSignature(mainSignature);
-      const feeSignatureParts = splitSignature(feeSignature);
+      const bundleSignature = await signTypedDataAsync(bundleTypedData);
 
       const job: JobPreview = {
         chainId,
         token: selectedToken.address,
-        main: serializeAuthorization(mainAuth, mainSignatureParts),
-        fee: serializeAuthorization(feeAuth, feeSignatureParts)
+        recipient,
+        authorization: serializeAuthorization(
+          authorizationMessage,
+          authorizationSignatureParts
+        ),
+        bundle: serializeBundle(bundleMessage),
+        bundleSignature,
+        mainAmount: mainValue.toString(),
+        feeAmount: feeValue.toString()
       };
 
       const response = await fetch("/api/jobs", {
@@ -318,8 +348,14 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
           chainId,
           token: selectedToken.address,
           status: "pending",
-          main: job.main,
-          fee: job.fee
+          authorization: job.authorization,
+          recipient,
+          bundle: job.bundle,
+          bundleSignature,
+          bundleDeadline: bundleMessage.deadline.toString(),
+          mainAmount: job.mainAmount,
+          feeAmount: job.feeAmount,
+          x402PaymentId: job.bundle.paymentId
         })
       });
 
@@ -337,9 +373,16 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
         setJobPreview({
           id: savedJob.id,
           chainId: Number(savedJob.chain_id ?? chainId),
-          token: savedJob.token ?? job.token,
-          main: savedJob.main ?? job.main,
-          fee: savedJob.fee ?? job.fee
+          token: (savedJob.token as `0x${string}`) ?? job.token,
+          recipient:
+            (savedJob.recipient as `0x${string}` | undefined) ?? job.recipient,
+          authorization:
+            (savedJob.authorization_payload as AuthorizationRecord) ??
+            job.authorization,
+          bundle: (savedJob.bundle as BundleRecord | null) ?? job.bundle,
+          bundleSignature: savedJob.bundle_signature ?? job.bundleSignature,
+          mainAmount: savedJob.main_amount ?? job.mainAmount,
+          feeAmount: savedJob.fee_amount ?? job.feeAmount
         });
       } else {
         setJobPreview(job);
@@ -378,7 +421,7 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
             送金チケットの作成
           </h2>
           <p className="text-sm text-muted-foreground">
-            送金条件と手数料を入力し、ウォレットで2つの署名を行います。
+            送金条件と手数料を入力し、ウォレットで transferWithAuthorization（合計額）と bundle の2署名を順番に行います。
           </p>
         </div>
         <aside className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3 text-sm text-muted-foreground shadow-sm backdrop-blur">
@@ -485,7 +528,7 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
             required
           />
           <p className="text-xs text-muted-foreground">
-            手数料の署名先は{FACILITATOR_CONTRACT_ADDRESS}です。
+            transferWithAuthorization の宛先は常に {FACILITATOR_CONTRACT_ADDRESS}（合計額）です。実行時にコントラクトが受取人と fee を振り分けます。
           </p>
         </div>
 
@@ -579,38 +622,24 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
               {
                 chainId: jobPreview.chainId,
                 token: jobPreview.token,
-                main: {
-                  from: jobPreview.main.from,
-                  to: jobPreview.main.to,
-                  value: jobPreview.main.value.toString(),
-                  validAfter: jobPreview.main.validAfter.toString(),
-                  validBefore: jobPreview.main.validBefore.toString(),
-                  nonce: jobPreview.main.nonce,
-                  signature: jobPreview.main.signature,
-                  v: jobPreview.main.v,
-                  r: jobPreview.main.r,
-                  s: jobPreview.main.s,
+                recipient: jobPreview.recipient,
+                authorization: {
+                  ...jobPreview.authorization,
                   humanReadable: formatUnits(
-                    BigInt(jobPreview.main.value),
+                    BigInt(jobPreview.authorization.value),
                     selectedToken?.decimals ?? 6
                   )
                 },
-                fee: {
-                  from: jobPreview.fee.from,
-                  to: jobPreview.fee.to,
-                  value: jobPreview.fee.value.toString(),
-                  validAfter: jobPreview.fee.validAfter.toString(),
-                  validBefore: jobPreview.fee.validBefore.toString(),
-                  nonce: jobPreview.fee.nonce,
-                  signature: jobPreview.fee.signature,
-                  v: jobPreview.fee.v,
-                  r: jobPreview.fee.r,
-                  s: jobPreview.fee.s,
-                  humanReadable: formatUnits(
-                    BigInt(jobPreview.fee.value),
-                    selectedToken?.decimals ?? 6
-                  )
-                }
+                bundle: jobPreview.bundle,
+                bundleSignature: jobPreview.bundleSignature,
+                mainAmount: formatUnits(
+                  BigInt(jobPreview.mainAmount),
+                  selectedToken?.decimals ?? 6
+                ),
+                feeAmount: formatUnits(
+                  BigInt(jobPreview.feeAmount),
+                  selectedToken?.decimals ?? 6
+                )
               },
               null,
               2
