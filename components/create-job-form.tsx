@@ -29,7 +29,7 @@ import {
   getTokensForChain,
   SUPPORTED_CHAINS
 } from "@/lib/tokens";
-import { FACILITATOR_CONTRACT_ADDRESS } from "@/lib/config";
+import { EXECUTOR_CONTRACT_ADDRESS } from "@/lib/config";
 import { cn } from "@/lib/utils";
 
 function serializeAuthorization(
@@ -260,7 +260,7 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
         throw new Error("手数料金額を入力してください。");
       }
 
-      const executorAddress = FACILITATOR_CONTRACT_ADDRESS as `0x${string}`;
+      const executorAddress = EXECUTOR_CONTRACT_ADDRESS as `0x${string}`;
 
       if (!form.validDate) {
         throw new Error("有効期限の日付を選択してください。");
@@ -528,7 +528,7 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
             required
           />
           <p className="text-xs text-muted-foreground">
-            transferWithAuthorization の宛先は常に {FACILITATOR_CONTRACT_ADDRESS}（合計額）です。実行時にコントラクトが受取人と fee を振り分けます。
+            transferWithAuthorization の宛先は常に {EXECUTOR_CONTRACT_ADDRESS}（合計額）です。実行時にコントラクトが受取人と fee を振り分けます。
           </p>
         </div>
 

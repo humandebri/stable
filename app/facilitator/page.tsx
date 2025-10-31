@@ -14,7 +14,7 @@ import {
   CardHeader,
   CardTitle
 } from "@/components/ui/card";
-import { FACILITATOR_CONTRACT_ADDRESS } from "@/lib/config";
+import { EXECUTOR_CONTRACT_ADDRESS } from "@/lib/config";
 import {
   executeJob,
   normalizeJobExecution
@@ -66,7 +66,7 @@ function JobExecuteButton({ job, onExecuted }: JobListItemProps) {
       await executeJob({
         walletClient,
         publicClient: publicClient ?? undefined,
-        executor: FACILITATOR_CONTRACT_ADDRESS as `0x${string}`,
+        executor: EXECUTOR_CONTRACT_ADDRESS as `0x${string}`,
         job
       });
 

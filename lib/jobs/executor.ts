@@ -208,36 +208,50 @@ export function validateJobBeforeExecution(
 }
 
 export type ExecuteArgs = [
-  Hex,
-  Address,
-  Address,
-  [Address, Address, bigint, bigint, bigint, Hex, number, Hex, Hex],
-  bigint,
-  bigint,
-  bigint,
-  Hex
+  {
+    paymentId: Hex;
+    token: Address;
+    recipient: Address;
+    auth: [
+      Address,
+      Address,
+      bigint,
+      bigint,
+      bigint,
+      Hex,
+      number,
+      Hex,
+      Hex
+    ];
+    mainAmount: bigint;
+    feeAmount: bigint;
+    deadline: bigint;
+    bundleSig: Hex;
+  }
 ];
 
 export function buildExecuteArgs(normalized: NormalizedJobExecution): ExecuteArgs {
   return [
-    normalized.paymentId,
-    normalized.token,
-    normalized.recipient,
-    [
-      normalized.authorization.from,
-      normalized.authorization.to,
-      normalized.authorization.value,
-      normalized.authorization.validAfter,
-      normalized.authorization.validBefore,
-      normalized.authorization.nonce,
-      normalized.authorization.v,
-      normalized.authorization.r,
-      normalized.authorization.s
-    ],
-    normalized.mainAmount,
-    normalized.feeAmount,
-    normalized.deadline,
-    normalized.bundleSignature
+    {
+      paymentId: normalized.paymentId,
+      token: normalized.token,
+      recipient: normalized.recipient,
+      auth: [
+        normalized.authorization.from,
+        normalized.authorization.to,
+        normalized.authorization.value,
+        normalized.authorization.validAfter,
+        normalized.authorization.validBefore,
+        normalized.authorization.nonce,
+        normalized.authorization.v,
+        normalized.authorization.r,
+        normalized.authorization.s
+      ],
+      mainAmount: normalized.mainAmount,
+      feeAmount: normalized.feeAmount,
+      deadline: normalized.deadline,
+      bundleSig: normalized.bundleSignature
+    }
   ];
 }
 
