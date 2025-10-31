@@ -58,11 +58,11 @@ export function Navbar() {
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div className="flex items-center gap-4 text-sm font-medium">
           <Link href="/" className="text-foreground hover:text-foreground/80">
-            3009 Facilitated Payments
+            Paylancer
           </Link>
           <nav className="flex items-center gap-2 text-xs text-muted-foreground">
             <Link
-              href="/"
+              href="/jobs"
               className="rounded-md px-2 py-1 hover:bg-muted hover:text-foreground"
             >
               ユーザー

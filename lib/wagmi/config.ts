@@ -15,8 +15,8 @@ if (!projectId) {
 }
 
 const metadata = {
-  name: "3009 Facilitated Payments",
-  description: "WalletConnect login for ERC-3009 facilitated payments dApp.",
+  name: "Paylancer",
+  description: "WalletConnect login for the Paylancer ERC-3009 facilitator dApp.",
   url: "https://example.com",
   icons: ["https://avatars.githubusercontent.com/u/37784886?s=200&v=4"]
 };
@@ -28,7 +28,7 @@ export const wagmiConfig = createConfig({
       shimDisconnect: true
     }),
     coinbaseWallet({
-      appName: "3009 Facilitated Payments"
+      appName: "Paylancer"
     }),
     walletConnect({
       projectId,

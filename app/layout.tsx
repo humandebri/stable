@@ -3,9 +3,9 @@ import "./globals.css";
 import { Providers } from "./providers";
 import { Navbar } from "@/components/navbar";
 
-const APP_TITLE = "3009 Facilitated Payments";
+const APP_TITLE = "Paylancer";
 const APP_DESCRIPTION =
-  "Create and manage deferred ERC-3009 transfer authorizations with WalletConnect login.";
+  "Paylancer は、事前署名した ERC-3009 送金チケットを管理し、ファシリテーターが安全に実行できる dApp です。";
 
 export const metadata: Metadata = {
   title: APP_TITLE,

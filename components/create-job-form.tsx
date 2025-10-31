@@ -509,7 +509,7 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
             onChange={changeField("amount")}
             required
           />
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground min-h-[44px]">
             残高・精度を確認してください。小数点以下
             {selectedToken ? selectedToken.decimals : 0}桁。
           </p>
@@ -527,7 +527,7 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
             onChange={handleFeeAmountChange}
             required
           />
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground min-h-[44px]">
             transferWithAuthorization の宛先は常に {EXECUTOR_CONTRACT_ADDRESS}（合計額）です。実行時にコントラクトが受取人と fee を振り分けます。
           </p>
         </div>
