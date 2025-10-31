@@ -18,13 +18,34 @@ import {
   parseTokenAmount,
   splitSignature
 } from "@/lib/eip3009";
+import type { SignatureParts } from "@/lib/eip3009";
+import type { AuthorizationRecord } from "@/lib/jobs/types";
 import type { SupportedTokenConfig } from "@/lib/tokens";
 import {
   DEFAULT_FEE_AMOUNT,
   getTokensForChain,
   SUPPORTED_CHAINS
 } from "@/lib/tokens";
+import { FACILITATOR_CONTRACT_ADDRESS } from "@/lib/config";
 import { cn } from "@/lib/utils";
+
+function serializeAuthorization(
+  auth: AuthorizationMessage,
+  signature: SignatureParts
+): AuthorizationRecord {
+  return {
+    from: auth.from,
+    to: auth.to,
+    value: auth.value.toString(),
+    validAfter: auth.validAfter.toString(),
+    validBefore: auth.validBefore.toString(),
+    nonce: auth.nonce,
+    signature: signature.signature,
+    v: signature.v,
+    r: signature.r,
+    s: signature.s
+  };
+}
 
 type FormState = {
   recipient: string;
@@ -36,20 +57,11 @@ type FormState = {
 };
 
 type JobPreview = {
+  id?: string;
   chainId: number;
   token: `0x${string}`;
-  main: AuthorizationMessage & {
-    signature: `0x${string}`;
-    v: number;
-    r: `0x${string}`;
-    s: `0x${string}`;
-  };
-  fee: AuthorizationMessage & {
-    signature: `0x${string}`;
-    v: number;
-    r: `0x${string}`;
-    s: `0x${string}`;
-  };
+  main: AuthorizationRecord;
+  fee: AuthorizationRecord;
 };
 
 const DEFAULT_FORM: FormState = {
@@ -58,7 +70,7 @@ const DEFAULT_FORM: FormState = {
   feeAmount: "",
   validDate: "",
   validTime: "",
-  tokenIndex: 0
+  tokenIndex: -1
 };
 
 function formatNowPlusMinutes(minutes: number) {
@@ -77,17 +89,66 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
   const { address } = useAccount();
   const { signTypedDataAsync } = useSignTypedData();
 
-  const tokens = useMemo(() => getTokensForChain(chainId), [chainId]);
+  const tokens = useMemo(() => {
+    const list = getTokensForChain(chainId);
+    if (list.length > 0 && list[0].symbol !== "JPYC") {
+      const sorted = [...list].sort((a, b) => {
+        if (a.symbol === "JPYC") return -1;
+        if (b.symbol === "JPYC") return 1;
+        return 0;
+      });
+      return sorted;
+    }
+    return list;
+  }, [chainId]);
   const [form, setForm] = useState<FormState>(() => DEFAULT_FORM);
   const lastTokenSymbolRef = useRef<SupportedTokenConfig["symbol"] | null>(
     null
   );
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    if (tokens.length === 0) return;
+
+    const defaultIndex = tokens.findIndex((token) => token.symbol === "JPYC");
+    const fallbackIndex = defaultIndex >= 0 ? defaultIndex : 0;
+
+    if (form.tokenIndex === -1 || form.tokenIndex >= tokens.length) {
+      setForm((prev) => ({
+        ...prev,
+        tokenIndex: fallbackIndex
+      }));
+      return;
+    }
+
+    const current = tokens[form.tokenIndex];
+    if (!current) {
+      setForm((prev) => ({
+        ...prev,
+        tokenIndex: fallbackIndex
+      }));
+    }
+  }, [form.tokenIndex, tokens]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [jobPreview, setJobPreview] = useState<JobPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const selectedToken = tokens[form.tokenIndex];
+  const selectedToken =
+    form.tokenIndex >= 0 && form.tokenIndex < tokens.length
+      ? tokens[form.tokenIndex]
+      : tokens[0];
+
+  const currentChainLabel = useMemo(() => {
+    if (!chainId) return null;
+    const chain = SUPPORTED_CHAINS.find((item) => item.id === chainId);
+    return chain ? `${chain.name} (#${chainId})` : `Chain #${chainId}`;
+  }, [chainId]);
 
   useEffect(() => {
     const hasInitialDate = form.validDate && form.validTime;
@@ -144,10 +205,11 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setSuccessMessage(null);
 
-     if (disabled) {
-       return;
-     }
+    if (disabled) {
+      return;
+    }
 
     if (!address) {
       setError("ウォレットが未接続です。");
@@ -175,7 +237,7 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
         throw new Error("手数料金額を入力してください。");
       }
 
-      const feeRecipient = address;
+      const feeRecipient = FACILITATOR_CONTRACT_ADDRESS as `0x${string}`;
 
       if (!form.validDate) {
         throw new Error("有効期限の日付を選択してください。");
@@ -237,20 +299,53 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
         message: feeAuth
       });
 
+      const mainSignatureParts = splitSignature(mainSignature);
+      const feeSignatureParts = splitSignature(feeSignature);
+
       const job: JobPreview = {
         chainId,
         token: selectedToken.address,
-        main: {
-          ...mainAuth,
-          ...splitSignature(mainSignature)
-        },
-        fee: {
-          ...feeAuth,
-          ...splitSignature(feeSignature)
-        }
+        main: serializeAuthorization(mainAuth, mainSignatureParts),
+        fee: serializeAuthorization(feeAuth, feeSignatureParts)
       };
 
-      setJobPreview(job);
+      const response = await fetch("/api/jobs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          chainId,
+          token: selectedToken.address,
+          status: "pending",
+          main: job.main,
+          fee: job.fee
+        })
+      });
+
+      if (!response.ok) {
+        const { error: apiError } = await response
+          .json()
+          .catch(() => ({ error: "ジョブの保存に失敗しました。" }));
+        throw new Error(apiError ?? "ジョブの保存に失敗しました。");
+      }
+
+      const payload = await response.json();
+      const savedJob = payload.job ?? null;
+
+      if (savedJob) {
+        setJobPreview({
+          id: savedJob.id,
+          chainId: Number(savedJob.chain_id ?? chainId),
+          token: savedJob.token ?? job.token,
+          main: savedJob.main ?? job.main,
+          fee: savedJob.fee ?? job.fee
+        });
+      } else {
+        setJobPreview(job);
+      }
+
+      setSuccessMessage("送金チケットを保存しました。");
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -263,7 +358,17 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
     }
   }
 
-  const currentChain = SUPPORTED_CHAINS.find((chain) => chain.id === chainId);
+  const currentChain = useMemo(() => {
+    if (!chainId) return null;
+    return SUPPORTED_CHAINS.find((chain) => chain.id === chainId);
+  }, [chainId]);
+
+  const chainDisplay = useMemo(() => {
+    if (!mounted || !currentChain || !chainId) {
+      return "チェーン情報取得中";
+    }
+    return `${currentChain.name} (#${chainId})`;
+  }, [mounted, currentChain, chainId]);
 
   return (
     <div className="space-y-8">
@@ -280,9 +385,7 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
           <div className="uppercase tracking-wide text-xs text-muted-foreground/80">
             接続チェーン
           </div>
-          <div className="font-medium text-foreground">
-            {currentChain ? `${currentChain.name} (#${chainId})` : `ID: ${chainId}`}
-          </div>
+          <div className="font-medium text-foreground">{chainDisplay}</div>
         </aside>
       </header>
 
@@ -297,7 +400,7 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
           disabled={disabled}
           className="contents disabled:cursor-not-allowed disabled:opacity-60"
         >
-        <div className="grid gap-2 md:col-span-2">
+          <div className="grid gap-2 md:col-span-2">
           <Label htmlFor="token">トークン</Label>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
             <select
@@ -337,9 +440,9 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
               コントラクト: {selectedToken.address}
             </p>
           ) : null}
-        </div>
+          </div>
 
-        <div className="grid gap-2 md:col-span-2">
+          <div className="grid gap-2 md:col-span-2">
           <Label htmlFor="recipient">受取アドレス</Label>
           <Input
             id="recipient"
@@ -349,9 +452,9 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
             onChange={changeField("recipient")}
             required
           />
-        </div>
+          </div>
 
-        <div className="grid gap-2">
+          <div className="grid gap-2">
           <Label htmlFor="amount">送金金額</Label>
           <Input
             id="amount"
@@ -367,7 +470,7 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
             残高・精度を確認してください。小数点以下
             {selectedToken ? selectedToken.decimals : 0}桁。
           </p>
-        </div>
+          </div>
 
         <div className="grid gap-2">
           <Label htmlFor="feeAmount">ファシリテータ手数料</Label>
@@ -382,12 +485,11 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
             required
           />
           <p className="text-xs text-muted-foreground">
-            残高・精度を確認してください。小数点以下
-            {selectedToken ? selectedToken.decimals : 0}桁。
+            手数料の署名先は{FACILITATOR_CONTRACT_ADDRESS}です。
           </p>
         </div>
 
-        <div className="grid gap-2 md:col-span-2">
+          <div className="grid gap-2 md:col-span-2">
           <Label>有効期限</Label>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <Popover>
@@ -433,9 +535,9 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
           <p className="text-xs text-muted-foreground">
             現在時刻より後を指定してください。
           </p>
-        </div>
+          </div>
 
-        <div className="md:col-span-2">
+          <div className="md:col-span-2">
           <Button
             type="submit"
             className="w-full md:w-auto"
@@ -443,13 +545,18 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
           >
             {isSubmitting ? "署名中..." : "署名してチケット生成"}
           </Button>
-        </div>
+          </div>
         </fieldset>
       </form>
 
       {error ? (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
+        </div>
+      ) : null}
+      {successMessage ? (
+        <div className="rounded-md border border-border/40 bg-muted/10 px-4 py-3 text-sm text-foreground">
+          {successMessage}
         </div>
       ) : null}
 
@@ -484,7 +591,7 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
                   r: jobPreview.main.r,
                   s: jobPreview.main.s,
                   humanReadable: formatUnits(
-                    jobPreview.main.value,
+                    BigInt(jobPreview.main.value),
                     selectedToken?.decimals ?? 6
                   )
                 },
@@ -500,7 +607,7 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
                   r: jobPreview.fee.r,
                   s: jobPreview.fee.s,
                   humanReadable: formatUnits(
-                    jobPreview.fee.value,
+                    BigInt(jobPreview.fee.value),
                     selectedToken?.decimals ?? 6
                   )
                 }

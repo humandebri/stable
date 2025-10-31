@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
+import { Navbar } from "@/components/navbar";
 
 const APP_TITLE = "3009 Facilitated Payments";
 const APP_DESCRIPTION =
@@ -19,7 +20,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-background text-foreground">
-        <Providers>{children}</Providers>
+        <Providers>
+          <Navbar />
+          {children}
+        </Providers>
       </body>
     </html>
   );
