@@ -327,3 +327,60 @@ export async function executeJob({
     chain: walletClient.chain
   });
 }
+
+export type ExecuteJobWithLoggingParams = ExecuteJobParams & {
+  logger?: (message: string, context?: Record<string, unknown>) => void;
+};
+
+/**
+ * executeJobWithLogging は normalize → validate → simulate → send を順番に実行し、
+ * 途中経過を任意の logger へ流し込む補助関数です。
+ */
+export async function executeJobWithLogging(params: ExecuteJobWithLoggingParams) {
+  const { logger, ...rest } = params;
+  const { walletClient, executor, job, publicClient } = rest;
+
+  const account = walletClient.account;
+  if (!account) {
+    throw new Error("Wallet client is not connected");
+  }
+
+  const log = (message: string, context?: Record<string, unknown>) => {
+    if (logger) {
+      logger(message, context);
+    }
+  };
+
+  log("normalizing job execution payload", { jobId: job.id });
+  const normalized = normalizeJobExecution(job);
+
+  log("validating execution window", {
+    paymentId: normalized.paymentId,
+    mainAmount: normalized.mainAmount.toString(),
+    feeAmount: normalized.feeAmount.toString()
+  });
+  validateJobBeforeExecution(normalized);
+
+  const args = buildExecuteArgs(normalized);
+
+  if (publicClient) {
+    log("simulating executeAuthorizedTransfer", { executor });
+    await publicClient.simulateContract({
+      account: account.address,
+      address: executor,
+      abi: erc3009ExecutorAbi,
+      functionName: "executeAuthorizedTransfer",
+      args
+    });
+  }
+
+  log("sending executeAuthorizedTransfer transaction", { executor });
+  return walletClient.writeContract({
+    account,
+    address: executor,
+    abi: erc3009ExecutorAbi,
+    functionName: "executeAuthorizedTransfer",
+    args,
+    chain: walletClient.chain
+  });
+}

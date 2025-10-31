@@ -368,12 +368,19 @@ export async function POST(request: Request) {
     }
   };
 
-  const releaseReservation = async () => {
+  const markReservationCompleted = async () => {
     if (!reservationId) return;
     try {
-      await supabase.from("job_reservations").delete().eq("id", reservationId);
+      await supabase
+        .from("job_reservations")
+        .update({
+          status: "completed",
+          last_error: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", reservationId);
     } catch (error) {
-      console.warn("Failed to release reservation", error);
+      console.warn("Failed to mark reservation as completed", error);
     }
   };
 
@@ -466,7 +473,7 @@ export async function POST(request: Request) {
         bundle_signature: normalized.bundleSignature,
         status: normalized.status,
         payment_id: normalized.paymentId,
-        x402_payment_id: normalized.x402PaymentId ?? normalized.paymentId,
+        x402_payment_id: normalized.x402PaymentId,
         valid_before: normalized.validBefore,
         expires_at: normalized.expiresAt.toISOString(),
         bundle_deadline: normalized.bundleDeadline,
@@ -484,7 +491,7 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    await releaseReservation();
+    await markReservationCompleted();
 
     return NextResponse.json({ job: data }, { status: 201 });
   } catch (error) {
