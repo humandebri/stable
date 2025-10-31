@@ -24,12 +24,23 @@ contract ERC3009Executor {
         ) external;
     }
 
+    interface IERC20 {
+        function transfer(address to, uint256 value) external returns (bool);
+    }
+
     error UnsupportedToken(address token);
     error InvalidFeePayer(address expected, address actual);
+    error InvalidFeeRecipient(address expected, address actual);
+    error FeeDistributionFailed();
 
     address public immutable USDT;
     address public immutable USDC;
     address public immutable JPYC;
+    address public immutable feeTreasury;
+
+    uint16 private constant FEE_DENOMINATOR = 1000;
+    uint16 private constant OPERATOR_SHARE = 100; // 10%
+    uint16 private constant FACILITATOR_SHARE = 900; // 90%
 
     /**
      * @dev x402 対応: paymentId を indexed で event に乗せる。
@@ -43,14 +54,17 @@ contract ERC3009Executor {
         address facilitator,
         uint256 mainAmount,
         uint256 feeAmount,
+        uint256 operatorAmount,
+        uint256 facilitatorAmount,
         bytes32 mainNonce,
         bytes32 feeNonce
     );
 
-    constructor(address _usdt, address _usdc, address _jpyc) {
+    constructor(address _usdt, address _usdc, address _jpyc, address _feeTreasury) {
         USDT = _usdt;
         USDC = _usdc;
         JPYC = _jpyc;
+        feeTreasury = _feeTreasury;
     }
 
     modifier onlySupported(address token) {
@@ -78,6 +92,10 @@ contract ERC3009Executor {
             revert InvalidFeePayer(mainStruct.from, feeStruct.from);
         }
 
+        if (feeStruct.to != address(this)) {
+            revert InvalidFeeRecipient(address(this), feeStruct.to);
+        }
+
         IERC3009(token).receiveWithAuthorization(
             mainStruct.from,
             mainStruct.to,
@@ -92,7 +110,7 @@ contract ERC3009Executor {
 
         IERC3009(token).receiveWithAuthorization(
             feeStruct.from,
-            feeStruct.to,
+            address(this),
             feeStruct.value,
             feeStruct.validAfter,
             feeStruct.validBefore,
@@ -102,6 +120,16 @@ contract ERC3009Executor {
             feeStruct.s
         );
 
+        uint256 operatorAmount = (feeStruct.value * OPERATOR_SHARE) / FEE_DENOMINATOR;
+        uint256 facilitatorAmount = feeStruct.value - operatorAmount;
+
+        bool operatorPaid = operatorAmount == 0 || IERC20(token).transfer(feeTreasury, operatorAmount);
+        bool facilitatorPaid = facilitatorAmount == 0 || IERC20(token).transfer(msg.sender, facilitatorAmount);
+
+        if (!operatorPaid || !facilitatorPaid) {
+            revert FeeDistributionFailed();
+        }
+
         emit Executed(
             paymentId,
             token,
@@ -110,6 +138,8 @@ contract ERC3009Executor {
             msg.sender,
             mainStruct.value,
             feeStruct.value,
+            operatorAmount,
+            facilitatorAmount,
             mainStruct.nonce,
             feeStruct.nonce
         );
