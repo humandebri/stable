@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 const PAYLANCER_BASE_URL =
-  process.env.NEXT_PUBLIC_PAYLANCER_BASE_URL ?? "https://your-paylancer-domain";
+  process.env.NEXT_PUBLIC_PAYLANCER_BASE_URL ?? "https://your-paylancer-domainn";
 
 const IFRAME_SNIPPET = `import React from "react";
 
@@ -17,6 +17,79 @@ export function PaylancerTicketEmbed() {
     />
   );
 }`;
+
+const REACT_COMPONENT_SNIPPET = `import React, { useState } from "react";
+import {
+  WagmiProvider,
+  createConfig,
+  http,
+  useAccount,
+  useConnect,
+  useDisconnect,
+  useSignMessage
+} from "wagmi";
+import { injected } from "wagmi/connectors";
+import { mainnet } from "wagmi/chains";
+
+const config = createConfig({
+  chains: [mainnet],
+  connectors: [injected()],
+  transports: { [mainnet.id]: http() }
+});
+
+function SignOnlyWidget() {
+  const { connect } = useConnect();
+  const { disconnect } = useDisconnect();
+  const { address, isConnected } = useAccount();
+  const { signMessageAsync } = useSignMessage();
+  const [message, setMessage] = useState("Paylancer: authorize payment");
+  const [signature, setSignature] = useState<string | null>(null);
+
+  const handleSign = async () => {
+    const sig = await signMessageAsync({ message });
+    setSignature(sig);
+  };
+
+  return (
+    <div className="rounded-lg border p-4">
+      {!isConnected ? (
+        <button onClick={() => connect()} className="rounded bg-blue-600 px-4 py-2 text-white">
+          Connect Wallet
+        </button>
+      ) : (
+        <>
+          <p className="mb-2 text-sm text-gray-600">Connected: {address}</p>
+          <textarea
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            rows={3}
+            className="mb-2 w-full rounded border p-2 text-sm"
+          />
+          <button onClick={handleSign} className="rounded bg-green-600 px-4 py-2 text-white">
+            Sign Message
+          </button>
+          <button onClick={() => disconnect()} className="ml-2 rounded border px-4 py-2 text-sm">
+            Disconnect
+          </button>
+          {signature ? (
+            <div className="mt-3 break-all text-xs">
+              <strong>Signature:</strong> {signature}
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+export function PaylancerSigner() {
+  return (
+    <WagmiProvider config={config}>
+      <SignOnlyWidget />
+    </WagmiProvider>
+  );
+}
+`;
 
 const API_SNIPPET = `curl -X POST ${PAYLANCER_BASE_URL}/api/jobs \\
   -H 'Content-Type: application/json' \\
@@ -65,14 +138,28 @@ export default function EmbedDocsPage() {
         </pre>
       </section>
 
+
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold text-foreground">React コンポーネントとして利用する</h2>
+        <p className="text-sm text-muted-foreground">
+          Paylancer のフォームは `CreateJobForm` をそのまま利用することで React 内に組み込めます。
+          必要な wagmi/RainbowKit ラッパーと環境変数を用意したうえで、以下のように import してください。
+        </p>
+        <pre className="overflow-auto rounded-lg border border-border/60 bg-muted/40 p-4 text-xs leading-relaxed text-foreground">
+          <code>{REACT_COMPONENT_SNIPPET}</code>
+        </pre>
+        <p className="text-xs text-muted-foreground">
+          依存関係: <code>wagmi</code>（v2）。必要に応じてチェーンやメッセージ内容を書き換えてください。
+        </p>
+      </section>
+
       <section className="space-y-3">
         <h2 className="text-xl font-semibold text-foreground">CORS / セキュリティ</h2>
         <p className="text-sm text-muted-foreground">
-          iframe 埋め込みの場合、ジョブ作成 API は Paylancer サーバー内で完結します。
-          埋め込み元アプリは UI だけを提供し、ジョブ保存には <code>X-API-Key</code> ヘッダーによる認証が利用されます。
+          iframe 埋め込みでは Paylancer 側の API が処理を完結させるため、ホスト側は `X-API-Key` ヘッダーだけ設定すれば安全に利用できます。
         </p>
         <p className="text-sm text-muted-foreground">
-          直接 React コンポーネントとして利用したい場合は、<Link href="/jobs" className="underline">/jobs</Link> のコードを参考に <code>CreateJobForm</code> コンポーネントをプロジェクトへ移植してください。将来的には npm パッケージとして提供予定です。
+          より高度なカスタマイズを行う場合は、<code>CreateJobForm</code>（`components/create-job-form.tsx`）をそのまま import してご利用ください。署名〜API保存まで一式揃っています。
         </p>
       </section>
 
