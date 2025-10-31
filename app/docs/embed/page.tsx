@@ -119,7 +119,7 @@ const ADMIN_CREATE_KEY_SNIPPET = `curl -X POST ${PAYLANCER_BASE_URL}/api/admin/a
 
 export default function EmbedDocsPage() {
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-4 py-10">
+    <article className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-4 py-10">
       <section className="space-y-3">
         <h1 className="text-3xl font-bold tracking-tight text-foreground">埋め込みガイド</h1>
         <p className="text-sm text-muted-foreground">
@@ -185,6 +185,6 @@ export default function EmbedDocsPage() {
           <strong>X-API-Key</strong> には発行した Paylancer API key（例: <code>plk_*</code>）を指定してください。リクエスト本文は `/jobs` ページで保存される JSON と同じ構造です。
         </p>
       </section>
-    </main>
+    </article>
   );
 }
