@@ -101,9 +101,10 @@ function formatNowPlusMinutes(minutes: number) {
 
 type CreateJobFormProps = {
   disabled?: boolean;
+  variant?: "default" | "embed";
 };
 
-export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
+export function CreateJobForm({ disabled = false, variant = "default" }: CreateJobFormProps) {
   const chainId = useChainId();
   const { address } = useAccount();
   const { signTypedDataAsync } = useSignTypedData();
@@ -415,22 +416,31 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
 
   return (
     <div className="space-y-8">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="space-y-2">
-          <h2 className="text-2xl  mt-5 font-semibold text-foreground">
-            送金チケットの作成
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            送金条件と手数料を入力し、ウォレットで transferWithAuthorization（合計額）と bundle の2署名を順番に行います。
-          </p>
-        </div>
-        <aside className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3 text-sm text-muted-foreground shadow-sm backdrop-blur">
-          <div className="uppercase tracking-wide text-xs text-muted-foreground/80">
-            接続チェーン
+      {variant === "default" ? (
+        <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
+            <h2 className="text-2xl  mt-5 font-semibold text-foreground">
+              送金チケットの作成
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              送金条件と手数料を入力し、ウォレットで transferWithAuthorization（合計額）と bundle の2署名を順番に行います。
+            </p>
           </div>
-          <div className="font-medium text-foreground">{chainDisplay}</div>
-        </aside>
-      </header>
+          <aside className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3 text-sm text-muted-foreground shadow-sm backdrop-blur">
+            <div className="uppercase tracking-wide text-xs text-muted-foreground/80">
+              接続チェーン
+            </div>
+            <div className="font-medium text-foreground">{chainDisplay}</div>
+          </aside>
+        </header>
+      ) : (
+        <header className="space-y-2 text-center">
+          <h2 className="text-xl font-semibold text-foreground">送金チケットを作成</h2>
+          <p className="text-xs text-muted-foreground">
+            transferWithAuthorization（合計額）と bundle の2署名でウォレットからジョブを保存します。
+          </p>
+        </header>
+      )}
 
       {tokens.length === 0 ? (
         <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-100">

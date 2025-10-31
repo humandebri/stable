@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,12 @@ function truncateAddress(address?: string) {
 }
 
 export function Navbar() {
+  const pathname = usePathname();
+
+  if (pathname?.startsWith("/embed")) {
+    return null;
+  }
+
   const { address, status: accountStatus, chainId } = useAccount();
   const { disconnect } = useDisconnect();
   const {
@@ -72,6 +79,12 @@ export function Navbar() {
               className="rounded-md px-2 py-1 hover:bg-muted hover:text-foreground"
             >
               ファシリテーター
+            </Link>
+            <Link
+              href="/docs/embed"
+              className="rounded-md px-2 py-1 hover:bg-muted hover:text-foreground"
+            >
+              Docs
             </Link>
           </nav>
         </div>

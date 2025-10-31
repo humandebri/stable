@@ -27,7 +27,7 @@ const FEATURES = [
   {
     title: "効率的なライブラリ",
     description:
-      "Paylancer SDK を組み込むだけで x402 連携や 、ファシリテーターをすぐに導入できます。"
+      "数行の React コードで iframe ウィジェットを埋め込めます。Docs の埋め込みガイドからコピー＆ペーストするだけです。"
   }
 ];
 
