@@ -1,3 +1,4 @@
+import { parseUnits } from "viem";
 import { arbitrum, mainnet, polygon } from "wagmi/chains";
 
 export type SupportedTokenConfig = {
@@ -114,4 +115,61 @@ export const SUPPORTED_TOKENS: Record<
 export function getTokensForChain(chainId?: number) {
   if (!chainId) return [];
   return SUPPORTED_TOKENS[chainId] ?? [];
+}
+
+const TOKEN_AMOUNT_LIMITS: Record<
+  SupportedTokenConfig["symbol"],
+  {
+    mainMin: string;
+    mainMax: string;
+    feeMin: string;
+    feeMax: string;
+  }
+> = {
+  USDC: {
+    mainMin: "0.01",
+    mainMax: "10000",
+    feeMin: "0.0001",
+    feeMax: "100"
+  },
+  USDT: {
+    mainMin: "0.01",
+    mainMax: "10000",
+    feeMin: "0.0001",
+    feeMax: "100"
+  },
+  JPYC: {
+    mainMin: "100",
+    mainMax: "5000000",
+    feeMin: "1",
+    feeMax: "50000"
+  }
+};
+
+export function findTokenConfig(chainId: number, tokenAddress: string) {
+  const tokens = getTokensForChain(chainId);
+  const normalized = tokenAddress.toLowerCase();
+  return tokens.find((item) => item.address.toLowerCase() === normalized);
+}
+
+export function getTokenAmountLimits(token: SupportedTokenConfig) {
+  const limits = TOKEN_AMOUNT_LIMITS[token.symbol];
+  const mainMin = parseUnits(limits.mainMin, token.decimals);
+  const mainMax = parseUnits(limits.mainMax, token.decimals);
+  const feeMin = parseUnits(limits.feeMin, token.decimals);
+  const feeMax = parseUnits(limits.feeMax, token.decimals);
+  return {
+    main: {
+      min: mainMin,
+      max: mainMax,
+      minDisplay: limits.mainMin,
+      maxDisplay: limits.mainMax
+    },
+    fee: {
+      min: feeMin,
+      max: feeMax,
+      minDisplay: limits.feeMin,
+      maxDisplay: limits.feeMax
+    }
+  };
 }

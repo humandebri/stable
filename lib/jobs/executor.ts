@@ -133,7 +133,11 @@ function normalizeAuthorizationRecord(auth: AuthorizationRecord | null | undefin
 }
 
 function normalizeBundle(job: JobRecord): NormalizedBundle {
-  const paymentId = toHex(job.x402_payment_id ?? job.bundle?.paymentId ?? ZERO32, "paymentId", 66);
+  const paymentId = toHex(
+    job.payment_id ?? job.x402_payment_id ?? job.bundle?.paymentId ?? ZERO32,
+    "paymentId",
+    66
+  );
 
   const rawDeadline = job.bundle_deadline ?? job.bundle?.deadline;
   const deadline = toBigInt(rawDeadline, "bundle.deadline");

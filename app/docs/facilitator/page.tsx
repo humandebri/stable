@@ -22,7 +22,7 @@ export default function FacilitatorDocsPage() {
         </p>
         <pre className="overflow-auto rounded-lg border border-border/60 bg-muted/40 p-4 text-xs leading-relaxed text-foreground">
 {`curl -X GET ${PAYLANCER_BASE_URL}/api/jobs?status=pending \\
-  -H 'X-API-Key: plk_xxxxx'`}
+  -H 'X-API-Key: plk_example'`}
         </pre>
       </section>
 

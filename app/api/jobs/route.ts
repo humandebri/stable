@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
+import { verifyTypedData } from "viem";
 
+import { assertInternalRequest } from "@/lib/api/auth";
+import { EXECUTOR_CONTRACT_ADDRESS } from "@/lib/config";
+import { buildBundleTypedData, normalizePaymentId } from "@/lib/eip3009";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
   AuthorizationRecord,
   BundleRecord,
   CreateJobRequest
 } from "@/lib/jobs/types";
-import { assertInternalRequest } from "@/lib/api/auth";
+import { findTokenConfig, getTokenAmountLimits } from "@/lib/tokens";
+import type { SupportedTokenConfig } from "@/lib/tokens";
 
 type AuthorizationPayload = {
   from: `0x${string}`;
@@ -22,6 +27,26 @@ type AuthorizationPayload = {
 };
 
 type CreateJobPayload = CreateJobRequest;
+
+type NormalizedJobPayload = {
+  chainId: number;
+  token: `0x${string}`;
+  tokenConfig: SupportedTokenConfig;
+  recipient: `0x${string}`;
+  authorization: AuthorizationRecord;
+  bundle: BundleRecord;
+  bundleSignature: `0x${string}`;
+  bundleDeadline: number;
+  mainAmount: bigint;
+  feeAmount: bigint;
+  status: string;
+  paymentId: `0x${string}`;
+  x402PaymentId: string | null;
+  merchantId: string | null;
+  validBefore: number;
+  validAfter: number;
+  expiresAt: Date;
+};
 
 function toStringValue(value: string | number | bigint) {
   if (typeof value === "bigint") return value.toString();
@@ -42,6 +67,19 @@ function normalizeAuthorization(auth: AuthorizationPayload): AuthorizationRecord
 
   if (required.some((value) => value === undefined || value === null)) {
     throw new Error("Authorization payload is missing required fields");
+  }
+
+  if (typeof auth.nonce !== "string" || !auth.nonce.startsWith("0x") || auth.nonce.length !== 66) {
+    throw new Error("authorization.nonce must be a 32-byte hex string");
+  }
+
+  if (
+    auth.signature &&
+    (typeof auth.signature !== "string" ||
+      !auth.signature.startsWith("0x") ||
+      auth.signature.length !== 132)
+  ) {
+    throw new Error("authorization.signature must be a 65-byte hex string");
   }
 
   return {
@@ -77,24 +115,45 @@ function normalizeBundle(bundle: BundleRecord | null | undefined): BundleRecord 
     throw new Error("bundle payload is missing required fields");
   }
 
+  const payer = bundle.payer as `0x${string}`;
+  const token = bundle.token as `0x${string}`;
+  const recipient = bundle.recipient as `0x${string}`;
+
+  if (!payer.startsWith("0x") || payer.length !== 42) {
+    throw new Error("bundle.payer must be a valid address");
+  }
+  if (!token.startsWith("0x") || token.length !== 42) {
+    throw new Error("bundle.token must be a valid address");
+  }
+  if (!recipient.startsWith("0x") || recipient.length !== 42) {
+    throw new Error("bundle.recipient must be a valid address");
+  }
+
+  const normalizedPaymentId = normalizePaymentId(bundle.paymentId);
+
   return {
-    payer: bundle.payer,
-    token: bundle.token,
-    recipient: bundle.recipient,
+    payer,
+    token,
+    recipient,
     mainAmount: toStringValue(bundle.mainAmount),
     feeAmount: toStringValue(bundle.feeAmount),
-    paymentId: bundle.paymentId,
+    paymentId: normalizedPaymentId,
     deadline: toStringValue(bundle.deadline)
   };
 }
 
-function validatePayload(payload: CreateJobPayload) {
+function validatePayload(payload: CreateJobPayload): NormalizedJobPayload {
   if (typeof payload.chainId !== "number" || Number.isNaN(payload.chainId)) {
     throw new Error("chainId must be a number");
   }
 
   if (!payload.token) {
     throw new Error("token is required");
+  }
+
+  const token = payload.token as `0x${string}`;
+  if (!token.startsWith("0x") || token.length !== 42) {
+    throw new Error("token must be a valid address");
   }
 
   if (!payload.recipient) {
@@ -110,12 +169,30 @@ function validatePayload(payload: CreateJobPayload) {
     throw new Error("recipient must be a valid address");
   }
 
+  const tokenConfig = findTokenConfig(payload.chainId, token);
+  if (!tokenConfig) {
+    throw new Error("token is not supported on this chain");
+  }
+
   const authorization = normalizeAuthorization(payload.authorization);
   const bundle = normalizeBundle(payload.bundle);
 
   const validBeforeSeconds = Number(authorization.validBefore);
   if (!Number.isFinite(validBeforeSeconds)) {
-    throw new Error("main.validBefore must be a numeric timestamp");
+    throw new Error("authorization.validBefore must be a numeric timestamp");
+  }
+
+  const validAfterSeconds = Number(authorization.validAfter);
+  if (!Number.isFinite(validAfterSeconds)) {
+    throw new Error("authorization.validAfter must be a numeric timestamp");
+  }
+
+  if (validAfterSeconds < 0) {
+    throw new Error("authorization.validAfter must be greater than or equal to zero");
+  }
+
+  if (validAfterSeconds >= validBeforeSeconds) {
+    throw new Error("authorization.validAfter must be less than validBefore");
   }
 
   const bundleDeadlineSource = payload.bundleDeadline ?? bundle.deadline;
@@ -124,20 +201,33 @@ function validatePayload(payload: CreateJobPayload) {
     throw new Error("bundle.deadline must be a numeric timestamp");
   }
 
-  if (!payload.bundleSignature || !payload.bundleSignature.startsWith("0x")) {
-    throw new Error("bundleSignature must be a 0x-prefixed hex string");
+  if (
+    !payload.bundleSignature ||
+    typeof payload.bundleSignature !== "string" ||
+    !payload.bundleSignature.startsWith("0x") ||
+    payload.bundleSignature.length !== 132
+  ) {
+    throw new Error("bundleSignature must be a 65-byte hex string");
   }
+  const bundleSignature = payload.bundleSignature as `0x${string}`;
 
   if (bundle.payer.toLowerCase() !== authorization.from.toLowerCase()) {
     throw new Error("bundle payer must match authorization signer");
   }
 
-  if (bundle.token.toLowerCase() !== payload.token.toLowerCase()) {
+  if (bundle.token.toLowerCase() !== token.toLowerCase()) {
     throw new Error("bundle token must match job token");
   }
 
   if (bundle.recipient.toLowerCase() !== recipient.toLowerCase()) {
     throw new Error("bundle recipient must match recipient field");
+  }
+
+  if (payload.paymentId) {
+    const overridePaymentId = normalizePaymentId(payload.paymentId);
+    if (overridePaymentId !== bundle.paymentId) {
+      throw new Error("paymentId must match bundle.paymentId");
+    }
   }
 
   let mainAmount: bigint;
@@ -165,23 +255,41 @@ function validatePayload(payload: CreateJobPayload) {
     throw new Error("authorization value must equal mainAmount + feeAmount");
   }
 
+  const limits = getTokenAmountLimits(tokenConfig);
+
+  if (mainAmount < limits.main.min || mainAmount > limits.main.max) {
+    throw new Error(
+      `mainAmount must be between ${limits.main.minDisplay} and ${limits.main.maxDisplay} ${tokenConfig.symbol}`
+    );
+  }
+
+  if (feeAmount < limits.fee.min || feeAmount > limits.fee.max) {
+    throw new Error(
+      `feeAmount must be between ${limits.fee.minDisplay} and ${limits.fee.maxDisplay} ${tokenConfig.symbol}`
+    );
+  }
+
   const expiresAt = new Date(validBeforeSeconds * 1000);
 
   return {
     chainId: payload.chainId,
-    token: payload.token,
+    token,
+    tokenConfig,
     recipient,
     authorization,
     bundle,
-    bundleSignature: payload.bundleSignature,
+    bundleSignature,
     bundleDeadline: bundleDeadlineSeconds,
-    mainAmount: mainAmount.toString(),
-    feeAmount: feeAmount.toString(),
+    mainAmount,
+    feeAmount,
     status: payload.status ?? "pending",
-    x402PaymentId: payload.x402PaymentId ?? bundle.paymentId ?? null,
+    paymentId: bundle.paymentId as `0x${string}`,
+    x402PaymentId: payload.x402PaymentId ?? null,
+    merchantId: payload.merchantId ?? null,
     validBefore: validBeforeSeconds,
+    validAfter: validAfterSeconds,
     expiresAt
-  } as const;
+  };
 }
 
 export async function POST(request: Request) {
@@ -215,14 +323,137 @@ export async function POST(request: Request) {
   const nowSeconds = Math.floor(Date.now() / 1000);
   if (normalized.validBefore <= nowSeconds) {
     return NextResponse.json(
-      { error: "Authorization has already expired" },
+      { error: "authorization.validBefore has already passed" },
+      { status: 400 }
+    );
+  }
+  if (normalized.validAfter > nowSeconds) {
+    return NextResponse.json(
+      { error: "authorization.validAfter has not started yet" },
+      { status: 400 }
+    );
+  }
+  if (normalized.bundleDeadline <= nowSeconds) {
+    return NextResponse.json(
+      { error: "bundle.deadline has already passed" },
       { status: 400 }
     );
   }
 
+  const reservationExpiresAtSeconds = Math.min(
+    normalized.validBefore,
+    normalized.bundleDeadline
+  );
+  const reservationExpiresAt = new Date(
+    reservationExpiresAtSeconds * 1000
+  ).toISOString();
+  const timestampNowIso = new Date().toISOString();
+
+  const supabase = createSupabaseServerClient();
+  let reservationId: string | null = null;
+
+  const markReservationFailed = async (reason: string) => {
+    if (!reservationId) return;
+    try {
+      await supabase
+        .from("job_reservations")
+        .update({
+          status: "failed",
+          last_error: reason.slice(0, 500),
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", reservationId);
+    } catch (error) {
+      console.warn("Failed to mark reservation as failed", error);
+    }
+  };
+
+  const releaseReservation = async () => {
+    if (!reservationId) return;
+    try {
+      await supabase.from("job_reservations").delete().eq("id", reservationId);
+    } catch (error) {
+      console.warn("Failed to release reservation", error);
+    }
+  };
+
+  const reservationInsertResult = await supabase
+    .from("job_reservations")
+    .insert({
+      payment_id: normalized.paymentId,
+      authorization_nonce: normalized.authorization.nonce,
+      chain_id: normalized.chainId,
+      token: normalized.token,
+      wallet_address: normalized.authorization.from,
+      merchant_id: normalized.merchantId,
+      status: "pending",
+      valid_after: normalized.validAfter,
+      valid_before: normalized.validBefore,
+      bundle_deadline: normalized.bundleDeadline,
+      expires_at: reservationExpiresAt,
+      created_at: timestampNowIso,
+      updated_at: timestampNowIso
+    })
+    .select()
+    .single();
+
+  if (reservationInsertResult.error) {
+    const { error } = reservationInsertResult;
+    if ("code" in error && error.code === "23505") {
+      return NextResponse.json(
+        { error: "Duplicate paymentId or authorization nonce" },
+        { status: 409 }
+      );
+    }
+    console.error("Failed to create job reservation", error);
+    return NextResponse.json(
+      { error: "Failed to create job reservation" },
+      { status: 500 }
+    );
+  }
+
+  reservationId = reservationInsertResult.data.id as string;
+
   try {
-    const supabase = createSupabaseServerClient();
-    const { error, data } = await supabase
+    const bundleTypedData = buildBundleTypedData(
+      EXECUTOR_CONTRACT_ADDRESS as `0x${string}`,
+      normalized.chainId,
+      {
+        payer: normalized.authorization.from as `0x${string}`,
+        token: normalized.token,
+        recipient: normalized.recipient,
+        mainAmount: normalized.mainAmount,
+        feeAmount: normalized.feeAmount,
+        paymentId: normalized.paymentId,
+        deadline: BigInt(normalized.bundleDeadline)
+      }
+    );
+
+    const signatureValid = await verifyTypedData({
+      address: normalized.authorization.from as `0x${string}`,
+      domain: bundleTypedData.domain,
+      types: bundleTypedData.types,
+      primaryType: bundleTypedData.primaryType,
+      message: bundleTypedData.message,
+      signature: normalized.bundleSignature
+    });
+
+    if (!signatureValid) {
+      await markReservationFailed("bundle signature verification failed");
+      return NextResponse.json(
+        { error: "bundle signature verification failed" },
+        { status: 400 }
+      );
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "bundle signature verification failed";
+    await markReservationFailed(message);
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  try {
+    const { data, error } = await supabase
       .from("jobs")
       .insert({
         chain_id: normalized.chainId,
@@ -234,28 +465,34 @@ export async function POST(request: Request) {
         bundle: normalized.bundle,
         bundle_signature: normalized.bundleSignature,
         status: normalized.status,
-        x402_payment_id: normalized.x402PaymentId,
+        payment_id: normalized.paymentId,
+        x402_payment_id: normalized.x402PaymentId ?? normalized.paymentId,
         valid_before: normalized.validBefore,
         expires_at: normalized.expiresAt.toISOString(),
         bundle_deadline: normalized.bundleDeadline,
         bundle_deadline_at: new Date(
           normalized.bundleDeadline * 1000
         ).toISOString(),
-        main_amount: normalized.mainAmount,
-        fee_amount: normalized.feeAmount
+        main_amount: normalized.mainAmount.toString(),
+        fee_amount: normalized.feeAmount.toString()
       })
       .select()
       .single();
 
     if (error) {
+      await markReservationFailed(error.message ?? "failed to save job");
       throw error;
     }
+
+    await releaseReservation();
 
     return NextResponse.json({ job: data }, { status: 201 });
   } catch (error) {
     console.error("Failed to insert job", error);
     return NextResponse.json(
-      { error: "Failed to save job" },
+      {
+        error: error instanceof Error ? error.message : "Failed to save job"
+      },
       { status: 500 }
     );
   }

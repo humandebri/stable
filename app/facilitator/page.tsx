@@ -119,7 +119,7 @@ function JobListItem({ job, onExecuted }: JobListItemProps) {
   let feeAmount: bigint | null = null;
   let recipient = job.recipient ?? job.bundle?.recipient ?? job.main?.to ?? ZERO_ADDRESS;
   let payer = job.authorization_payload?.from ?? job.main?.from ?? ZERO_ADDRESS;
-  let paymentId = job.x402_payment_id ?? job.bundle?.paymentId ?? null;
+  let paymentId = job.payment_id ?? job.x402_payment_id ?? job.bundle?.paymentId ?? null;
   let executionError: string | null = null;
 
   try {

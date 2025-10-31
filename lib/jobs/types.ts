@@ -27,6 +27,7 @@ export type JobRecord = {
   chain_id: number;
   token: `0x${string}`;
   status: string;
+  payment_id?: string | null;
   authorization_payload?: AuthorizationRecord | null;
   main?: AuthorizationRecord | null; // legacy
   fee?: AuthorizationRecord | null; // legacy
@@ -57,9 +58,11 @@ export type CreateJobRequest = {
   mainAmount: string;
   feeAmount: string;
   x402PaymentId?: string | null;
+  paymentId?: string | null;
+  merchantId?: string | null;
   bundle: BundleRecord;
   bundleSignature: string;
-  bundleDeadline: string;
+  bundleDeadline?: string;
 };
 
 export type JobResponse = {
@@ -68,4 +71,24 @@ export type JobResponse = {
 
 export type JobsResponse = {
   jobs: JobRecord[];
+};
+
+export type JobReservationStatus = "pending" | "completed" | "failed" | "expired";
+
+export type JobReservationRecord = {
+  id: string;
+  payment_id: string;
+  authorization_nonce: string;
+  chain_id: number;
+  token: `0x${string}`;
+  wallet_address: `0x${string}`;
+  merchant_id: string | null;
+  status: JobReservationStatus;
+  valid_after: string;
+  valid_before: string;
+  bundle_deadline: string;
+  expires_at: string;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
 };
