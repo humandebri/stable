@@ -20,7 +20,7 @@ export function PaylancerTicketEmbed() {
 
 const API_SNIPPET = `curl -X POST ${PAYLANCER_BASE_URL}/api/jobs \\
   -H 'Content-Type: application/json' \\
-  -H 'X-Internal-API-Key: <INTERNAL_API_SECRET>' \\
+  -H 'X-API-Key: <YOUR_PAYLANCER_API_KEY>' \\
   -d '{
     "chainId": 137,
     "token": "0xToken...",
@@ -38,6 +38,11 @@ const FLOW_STEPS = [
   "同じウォレットで bundle 署名を取得する",
   "署名データを Paylancer API に POST してジョブとして保存する"
 ];
+
+const ADMIN_CREATE_KEY_SNIPPET = `curl -X POST ${PAYLANCER_BASE_URL}/api/admin/api-keys \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-Internal-API-Key: <INTERNAL_API_SECRET>' \\
+  -d '{ "name": "staging backend" }'`;
 
 export default function EmbedDocsPage() {
   return (
@@ -64,7 +69,7 @@ export default function EmbedDocsPage() {
         <h2 className="text-xl font-semibold text-foreground">CORS / セキュリティ</h2>
         <p className="text-sm text-muted-foreground">
           iframe 埋め込みの場合、ジョブ作成 API は Paylancer サーバー内で完結します。
-          埋め込み元アプリは UI だけを提供し、ジョブ保存には <code>X-Internal-API-Key</code> による認証が利用されます。
+          埋め込み元アプリは UI だけを提供し、ジョブ保存には <code>X-API-Key</code> ヘッダーによる認証が利用されます。
         </p>
         <p className="text-sm text-muted-foreground">
           直接 React コンポーネントとして利用したい場合は、<Link href="/jobs" className="underline">/jobs</Link> のコードを参考に <code>CreateJobForm</code> コンポーネントをプロジェクトへ移植してください。将来的には npm パッケージとして提供予定です。
@@ -90,7 +95,20 @@ export default function EmbedDocsPage() {
           <code>{API_SNIPPET}</code>
         </pre>
         <p className="text-xs text-muted-foreground">
-          <strong>X-Internal-API-Key</strong> には <code>INTERNAL_API_SECRET</code> を設定してください。リクエスト本文は `/jobs` ページで保存される JSON と同じ構造です。
+          <strong>X-API-Key</strong> には発行した Paylancer API key（例: <code>plk_*</code>）を指定してください。リクエスト本文は `/jobs` ページで保存される JSON と同じ構造です。
+        </p>
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold text-foreground">APIキーの発行と無効化</h2>
+        <p className="text-sm text-muted-foreground">
+          Paylancer の API キーは管理者が <code>INTERNAL_API_SECRET</code> を使って発行します。下記コマンドを実行すると、新しいキー（<code>plk_*</code>）が払い出されます。
+        </p>
+        <pre className="overflow-auto rounded-lg border border-border/60 bg-muted/40 p-4 text-xs leading-relaxed text-foreground">
+          <code>{ADMIN_CREATE_KEY_SNIPPET}</code>
+        </pre>
+        <p className="text-xs text-muted-foreground">
+          レスポンスに含まれる <code>key</code> は一度しか表示されません。安全な場所に保管し、通常の API 呼び出しでは <code>X-API-Key</code> ヘッダーに設定してください。キーを無効化したい場合は <code>PATCH /api/admin/api-keys/&lt;id&gt;</code> に <code>{'{ "action": "revoke" }'}</code> を送信します。
         </p>
       </section>
     </main>

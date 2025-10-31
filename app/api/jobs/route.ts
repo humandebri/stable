@@ -186,7 +186,7 @@ function validatePayload(payload: CreateJobPayload) {
 
 export async function POST(request: Request) {
   try {
-    assertInternalRequest(request);
+    await assertInternalRequest(request);
   } catch {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -263,7 +263,7 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
-    assertInternalRequest(request);
+    await assertInternalRequest(request);
   } catch {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

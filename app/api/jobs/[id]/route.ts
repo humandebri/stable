@@ -36,7 +36,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    assertInternalRequest(request);
+    await assertInternalRequest(request);
   } catch {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

@@ -86,6 +86,12 @@ export function Navbar() {
             >
               Docs
             </Link>
+            <Link
+              href="/dev/api-keys"
+              className="rounded-md px-2 py-1 hover:bg-muted hover:text-foreground"
+            >
+              Developer
+            </Link>
           </nav>
         </div>
 
