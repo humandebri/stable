@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { validatePayload } from "@/app/api/jobs/route";
 import {
   buildExecuteArgs,
   normalizeJobExecution,
   validateJobBeforeExecution
 } from "@/lib/jobs/executor";
+import { validateJobCreatePayload } from "@/lib/jobs/validation";
 import type { CreateJobRequest, JobRecord } from "@/lib/jobs/types";
 
 const nowSeconds = Math.floor(Date.now() / 1000);
@@ -42,7 +42,7 @@ const basePayload: CreateJobRequest = {
 };
 
 function buildJobRecord(): { job: JobRecord; paymentId: string } {
-  const normalized = validatePayload(basePayload);
+  const normalized = validateJobCreatePayload(basePayload);
 
   const job: JobRecord = {
     id: "job-1",
@@ -78,7 +78,7 @@ describe("job execution helpers", () => {
 
     expect(() =>
       validateJobBeforeExecution(normalizedExecution, {
-        currentTime: Number(normalizedExecution.authorization.validBefore - 10n)
+        currentTime: Number(normalizedExecution.authorization.validAfter + 1n)
       })
     ).not.toThrow();
 
@@ -87,6 +87,12 @@ describe("job execution helpers", () => {
         currentTime: Number(normalizedExecution.authorization.validBefore)
       })
     ).toThrow(/authorization has expired/);
+
+    expect(() =>
+      validateJobBeforeExecution(normalizedExecution, {
+        currentTime: Number(normalizedExecution.deadline)
+      })
+    ).toThrow(/bundle deadline has passed/);
 
     const args = buildExecuteArgs(normalizedExecution);
     expect(args[0].paymentId).toBe(paymentId);
@@ -98,7 +104,7 @@ describe("job execution helpers", () => {
     invalidPayload.mainAmount = "0";
     invalidPayload.bundle.mainAmount = "0";
 
-    expect(() => validatePayload(invalidPayload)).toThrow(
+    expect(() => validateJobCreatePayload(invalidPayload)).toThrow(
       /mainAmount and feeAmount must be greater than zero/
     );
   });

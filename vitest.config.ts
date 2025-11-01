@@ -7,6 +7,7 @@ export default defineConfig({
     globals: true,
     alias: {
       "@": path.resolve(__dirname, ".")
-    }
+    },
+    setupFiles: ["tests/setup.ts"]
   }
 });

@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 const NAV_ITEMS = [
   { href: "/docs", label: "概要" },
   { href: "/docs/embed", label: "埋め込み" },
-  { href: "/docs/facilitator", label: "ファシリテーター" }
+  { href: "/docs/facilitator", label: "ファシリテーター" },
+  { href: "/whitepaper", label: "ホワイトペーパー" }
 ];
 
 function clsx(...classes: (string | false | null | undefined)[]) {
@@ -17,7 +18,7 @@ export function DocsSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-24 hidden w-56 flex-col gap-1 text-sm text-muted-foreground md:flex">
+    <aside className="sticky top-24 hidden w-56 flex-col gap-3 text-sm text-muted-foreground md:flex">
       <span className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/80">
         ドキュメント
       </span>

@@ -7,6 +7,7 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 const NAV_LINKS = [
   { href: "/jobs", label: "ユーザー" },
   { href: "/facilitator", label: "ファシリテーター" },
+  { href: "/whitepaper", label: "ホワイトペーパー" },
   { href: "/docs/embed", label: "Docs" },
   { href: "/dev/api-keys", label: "Developer" }
 ];
