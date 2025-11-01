@@ -2,7 +2,7 @@
 
 import { useAccount } from "wagmi";
 
-import { CreateJobForm } from "@/components/create-job-form";
+import { CreateJobForm } from "@/components/create-job-form/index";
 import { Card, CardContent } from "@/components/ui/card";
 
 export default function CreateJobPage() {

@@ -1,18 +1,47 @@
 import Link from "next/link";
 
-const PAYLANCER_BASE_URL =
-  process.env.NEXT_PUBLIC_PAYLANCER_BASE_URL ?? "https://your-paylancer-domainn";
+const PAYLANCER_BASE_URL = (process.env.NEXT_PUBLIC_PAYLANCER_BASE_URL ?? "").replace(/\/$/, "");
 
-const IFRAME_SNIPPET = `import React from "react";
+const IFRAME_SNIPPET = `import React, { useEffect, useRef, useState } from "react";
 
 export function PaylancerTicketEmbed() {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(720);
+
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type !== "paylancer:height") return;
+      if (typeof event.data.height === "number") {
+        setHeight(event.data.height);
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
   return (
     <iframe
+      ref={iframeRef}
       src="${PAYLANCER_BASE_URL}/embed/ticket"
       title="Paylancer Ticket"
       width="100%"
-      height="720"
+      style={{ border: "0", borderRadius: "16px", height }}
+      allow="clipboard-write"
+    />
+  );
+}`;
+
+const IFRAME_PREFILL_SNIPPET = `import React from "react";
+
+export function PaylancerTicketEmbedPrefilled() {
+  return (
+    <iframe
+      src="${PAYLANCER_BASE_URL}/embed/ticket?token=0xToken...&recipient=0xRecipient...&amount=120&fee=0.5"
+      title="Paylancer Ticket (Prefilled)"
+      width="100%"
+      height="640"
       style={{ border: "0", borderRadius: "16px" }}
+      scrolling="no"
       allow="clipboard-write"
     />
   );
@@ -165,6 +194,31 @@ export function usePaymentStatus(paymentId) {
   return { status, error };
 }`;
 
+const IFRAME_RESIZE_SNIPPET = `import { useEffect, useRef, useState } from "react";
+
+export function PaylancerTicketEmbed() {
+  const iframeRef = useRef(null);
+  const [height, setHeight] = useState(720);
+
+  useEffect(() => {
+    const listener = (event) => {
+      if (event.data?.type !== "paylancer:height") return;
+      setHeight(event.data.height);
+    };
+    window.addEventListener("message", listener);
+    return () => window.removeEventListener("message", listener);
+  }, []);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      src="${PAYLANCER_BASE_URL}/embed/ticket"
+      style={{ width: "100%", border: 0, height }}
+      allow="clipboard-write"
+    />
+  );
+}`;
+
 export default function EmbedDocsPage() {
   return (
     <article className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-4 py-10">
@@ -179,11 +233,43 @@ export default function EmbedDocsPage() {
       <section className="space-y-4">
         <h2 className="text-xl font-semibold text-foreground">最小コード例</h2>
         <p className="text-sm text-muted-foreground">
-          任意のコンポーネント内に以下を貼り付けるだけで、Paylancer のフォームが表示されます。
+          任意のコンポーネント内に以下を貼り付けるだけで、Paylancer のフォームが表示されます。iframe 内には自動でリサイズイベントを送信するため、ホスト側では高さだけを更新すれば大丈夫です。
         </p>
         <pre className="overflow-auto rounded-lg border border-border/60 bg-muted/40 p-4 text-xs leading-relaxed text-foreground">
           <code>{IFRAME_SNIPPET}</code>
         </pre>
+        <p className="text-sm text-muted-foreground">
+          埋め込み URL にクエリパラメータを付与すると、フォームの初期値を設定しつつ該当フィールドをロックできます。
+          例: <code>?token=0x...&recipient=0x...&amount=100&fee=0.5</code>
+        </p>
+        <ul className="list-disc space-y-1 pl-6 text-sm text-muted-foreground">
+          <li><code>token</code>: トークンコントラクトアドレス（指定するとトークン選択をロック）</li>
+          <li><code>recipient</code>: 受取人アドレス（`0x` 形式、40文字）</li>
+          <li><code>amount</code>: 送金金額（数値文字列）</li>
+          <li><code>fee</code>: ファシリテーター手数料（数値文字列）</li>
+        </ul>
+        <p className="text-xs text-muted-foreground">
+          ご利用いただけるトークンはチェーン毎に Paylancer がホワイトリスト登録したものだけです。対応外のアドレスを指定すると、iframe 内で警告が表示され保存処理は進みません。現在のチェーンで許可されているトークンは `/jobs` 画面のドロップダウンに表示される一覧をご確認ください。
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-xl font-semibold text-foreground">埋め込みプレビュー</h2>
+        <p className="text-sm text-muted-foreground">
+          実際に iframe を配置すると以下のように表示されます。デザイン調整の参考としてご覧ください（サンプルのため本番ドメインに置き換えてご利用ください）。
+        </p>
+
+        <div className="overflow-hidden rounded-xl border border-border/70">
+          <iframe
+            src={`${PAYLANCER_BASE_URL}/embed/ticket?token=0x1111111111111111111111111111111111111111&recipient=0x2222222222222222222222222222222222222222&amount=150&fee=0.75`}
+            title="Paylancer Ticket Preview (Prefilled)"
+            className="h-[680px] w-full"
+            style={{ border: "0" }}
+            scrolling="no"
+            allow="clipboard-write"
+          />
+        </div>
+
       </section>
 
 
@@ -207,7 +293,7 @@ export default function EmbedDocsPage() {
           iframe 埋め込みでは Paylancer 側の API が処理を完結させるため、ホスト側は `X-API-Key` ヘッダーだけ設定すれば安全に利用できます。
         </p>
         <p className="text-sm text-muted-foreground">
-          より高度なカスタマイズを行う場合は、<code>CreateJobForm</code>（`components/create-job-form.tsx`）をそのまま import してご利用ください。署名〜API保存まで一式揃っています。
+          より高度なカスタマイズを行う場合は、<code>CreateJobForm</code>（`components/create-job-form`）をそのまま import してご利用ください。署名〜API保存まで一式揃っています。
         </p>
       </section>
 
@@ -233,6 +319,21 @@ export default function EmbedDocsPage() {
         </pre>
         <p className="text-xs text-muted-foreground">
           `status` が `executed` / `failed` など終端ステータスになった時点でポーリングが終了します。`error` は通信失敗時に表示用として利用できます。
+        </p>
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold text-foreground">iframe の高さを自動調整する</h2>
+        <p className="text-sm text-muted-foreground">
+          `/embed/ticket` はフォームの高さが変化するたびに <code>postMessage</code> でホストページへ通知します。
+          以下のようにメッセージを受け取り、`iframe` の高さを更新すると固定値を決めずに埋め込めます。
+        </p>
+        <pre className="overflow-auto rounded-lg border border-border/60 bg-muted/40 p-4 text-xs leading-relaxed text-foreground">
+          <code>{IFRAME_RESIZE_SNIPPET}</code>
+        </pre>
+        <p className="text-xs text-muted-foreground">
+          受信するメッセージの `type` は常に <code>paylancer:height</code> です。`height` の単位は px なので、そのまま `style.height`
+          に適用できます。
         </p>
       </section>
 

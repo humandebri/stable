@@ -1,7 +1,6 @@
 import Link from "next/link";
 
-const PAYLANCER_BASE_URL =
-  process.env.NEXT_PUBLIC_PAYLANCER_BASE_URL ?? "https://your-paylancer-domain";
+const PAYLANCER_BASE_URL = (process.env.NEXT_PUBLIC_PAYLANCER_BASE_URL ?? "").replace(/\/$/, "");
 
 export default function FacilitatorDocsPage() {
   return (
