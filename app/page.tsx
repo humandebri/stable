@@ -39,8 +39,7 @@ export default function LandingPage() {
           Paylancer
         </span>
         <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-          署名を先に集めて、実行は後から。<br className="hidden sm:block" />
-          Paylancer はフロントとファシリテーターが協調する送金基盤です。
+          フロントとファシリテーターが協調する送金基盤
         </h1>
         <p className="mx-auto max-w-2xl text-sm text-muted-foreground sm:text-base">
           ユーザーはウォレットで 2 回署名し、ジョブとして保存。

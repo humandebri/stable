@@ -223,7 +223,7 @@ export function PaylancerTicketEmbed() {
 
 export default function EmbedDocsPage() {
   return (
-    <article className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-4 py-10">
+    <article className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-2">
       <section className="space-y-3">
         <h1 className="text-3xl font-bold tracking-tight text-foreground">埋め込みガイド</h1>
         <p className="text-sm text-muted-foreground">
@@ -248,7 +248,7 @@ export default function EmbedDocsPage() {
           <li><code>token</code>: トークンコントラクトアドレス（指定するとトークン選択をロック）</li>
           <li><code>recipient</code>: 受取人アドレス（`0x` 形式、40文字）</li>
           <li><code>amount</code>: 送金金額（数値文字列）</li>
-          <li><code>fee</code>: ファシリテーター手数料（数値文字列）</li>
+          <li><code>fee</code>: ファシリテーター手数料（数値文字列・USDC/USDT は 0.001〜100、JPYC は 0.1〜100）</li>
         </ul>
         <p className="text-xs text-muted-foreground">
           ご利用いただけるトークンはチェーン毎に Paylancer がホワイトリスト登録したものだけです。対応外のアドレスを指定すると、iframe 内で警告が表示され保存処理は進みません。現在のチェーンで許可されているトークンは `/jobs` 画面のドロップダウンに表示される一覧をご確認ください。

@@ -141,7 +141,7 @@ const TOKEN_AMOUNT_LIMITS: Record<
   JPYC: {
     mainMin: "100",
     mainMax: "5000000",
-    feeMin: "0.001",
+    feeMin: "0.1",
     feeMax: "100"
   }
 };
