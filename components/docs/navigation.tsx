@@ -32,7 +32,7 @@ export function DocsSidebar() {
               className={clsx(
                 "rounded-md px-3 py-2 transition",
                 active
-                  ? "bg-muted text-foreground"
+                  ? "text-foreground"
                   : "hover:bg-muted/70 hover:text-foreground"
               )}
             >

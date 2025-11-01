@@ -109,6 +109,7 @@ export type UseCreateJobFormStateArgs = {
   disabled?: boolean;
   prefill?: CreateJobFormPrefill;
   lock?: CreateJobFormLocks;
+  deadlineMode?: "manual" | "auto";
 };
 
 export type CreateJobFormController = ReturnType<typeof useCreateJobFormState>;
@@ -116,7 +117,8 @@ export type CreateJobFormController = ReturnType<typeof useCreateJobFormState>;
 export function useCreateJobFormState({
   disabled = false,
   prefill,
-  lock
+  lock,
+  deadlineMode = "manual"
 }: UseCreateJobFormStateArgs = {}) {
   const chainId = useChainId();
   const { address } = useAccount();
@@ -128,6 +130,8 @@ export function useCreateJobFormState({
     amount: Boolean(lock?.amount),
     feeAmount: Boolean(lock?.feeAmount)
   };
+
+  const autoDeadline = deadlineMode === "auto";
 
   const tokens = useMemo(() => {
     const list = getTokensForChain(chainId);
@@ -345,15 +349,26 @@ export function useCreateJobFormState({
         throw new Error("手数料金額を入力してください。");
       }
 
-      if (!form.validDate) {
-        throw new Error("有効期限の日付を選択してください。");
+      let validDate = form.validDate;
+      let validTime = form.validTime;
+
+      if (autoDeadline || !validDate || !validTime) {
+        const autoDateTime = formatNowPlusMinutes(5);
+        const [autoDate = "", autoTime = ""] = autoDateTime.split("T");
+        validDate = autoDate;
+        validTime = autoTime;
+        setForm((prev) => ({
+          ...prev,
+          validDate,
+          validTime
+        }));
       }
 
-      if (!form.validTime) {
-        throw new Error("有効期限の時間を入力してください。");
+      if (!validDate || !validTime) {
+        throw new Error("有効期限を決定できませんでした。もう一度お試しください。");
       }
 
-      const combinedDateTime = `${form.validDate}T${form.validTime}`;
+      const combinedDateTime = `${validDate}T${validTime}`;
       const validBeforeDate = new Date(combinedDateTime);
       if (Number.isNaN(validBeforeDate.getTime())) {
         throw new Error("有効期限を正しく入力してください。");

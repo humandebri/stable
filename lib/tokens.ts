@@ -129,20 +129,20 @@ const TOKEN_AMOUNT_LIMITS: Record<
   USDC: {
     mainMin: "0.01",
     mainMax: "10000",
-    feeMin: "0.0001",
+    feeMin: "0.001",
     feeMax: "100"
   },
   USDT: {
     mainMin: "0.01",
     mainMax: "10000",
-    feeMin: "0.0001",
+    feeMin: "0.001",
     feeMax: "100"
   },
   JPYC: {
     mainMin: "100",
     mainMax: "5000000",
-    feeMin: "1",
-    feeMax: "50000"
+    feeMin: "0.001",
+    feeMax: "100"
   }
 };
 

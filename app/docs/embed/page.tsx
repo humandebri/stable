@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { EmbedPreview } from "@/components/docs/embed-preview";
+
 const PAYLANCER_BASE_URL = (process.env.NEXT_PUBLIC_PAYLANCER_BASE_URL ?? "").replace(/\/$/, "");
 
 const IFRAME_SNIPPET = `import React, { useEffect, useRef, useState } from "react";
@@ -260,13 +262,10 @@ export default function EmbedDocsPage() {
         </p>
 
         <div className="overflow-hidden rounded-lg border border-border bg-white shadow-sm">
-          <iframe
-            src={`${PAYLANCER_BASE_URL}/embed/ticket?token=0xE7C3D8C9a439feDe00D2600032D5dB0Be71C3c29&recipient=0x2222222222222222222222222222222222222222&amount=150&fee=0.75`}
+          <EmbedPreview
+            src={`${PAYLANCER_BASE_URL}/embed/ticket?token=0xE7C3D8C9a439feDe00D2600032D5dB0Be71C3c29&recipient=0x59eD56DF718Ba10212B853237259B51007F80915&amount=150&fee=0.75`}
             title="Paylancer Ticket Preview (Prefilled)"
-            className="h-[700px] w-full"
-            style={{ border: "0", backgroundColor: "#ffffff" }}
-            scrolling="no"
-            allow="clipboard-write"
+            className="w-full"
           />
         </div>
 

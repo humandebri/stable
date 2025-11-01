@@ -24,6 +24,6 @@ export function CreateJobForm({ disabled = false }: CreateJobFormProps) {
 }
 
 export function CreateJobFormEmbed({ disabled = false, prefill, lock }: CreateJobFormEmbedProps) {
-  const controller = useCreateJobFormState({ disabled, prefill, lock });
+  const controller = useCreateJobFormState({ disabled, prefill, lock, deadlineMode: "auto" });
   return <CreateJobFormEmbedView controller={controller} />;
 }

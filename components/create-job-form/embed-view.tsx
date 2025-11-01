@@ -1,16 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
-import { format } from "date-fns";
+import { useEffect, useRef } from "react";
 
 import { EXECUTOR_CONTRACT_ADDRESS } from "@/lib/config";
 import type { CreateJobFormController } from "@/lib/jobs/hooks/useCreateJobFormState";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 export function CreateJobFormEmbedView({ controller }: { controller: CreateJobFormController }) {
   const {
@@ -25,17 +22,10 @@ export function CreateJobFormEmbedView({ controller }: { controller: CreateJobFo
     lockedFields,
     changeField,
     handleFeeAmountChange,
-    handleDateSelect,
-    handleTimeChange,
     handleSubmit
   } = controller;
 
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const formattedDeadline = useMemo(() => {
-    if (!form.validDate) return "日付を選択";
-    return format(new Date(`${form.validDate}T00:00`), "yyyy/MM/dd");
-  }, [form.validDate]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -67,7 +57,7 @@ export function CreateJobFormEmbedView({ controller }: { controller: CreateJobFo
   }, []);
 
   return (
-    <div ref={containerRef} className="space-y-5 p-2">
+    <div ref={containerRef} className="space-y-5 p-2 bg-white">
       <header className="space-y-2 text-center">
         <h2 className="text-xl font-semibold text-foreground">送金チケットを作成</h2>
         <p className="text-xs text-muted-foreground">
@@ -81,7 +71,7 @@ export function CreateJobFormEmbedView({ controller }: { controller: CreateJobFo
         </div>
       ) : null}
 
-      <form className="grid grid-cols-1 gap-4" onSubmit={handleSubmit}>
+      <form className="mx-auto grid w-full max-w-md grid-cols-1 gap-4" onSubmit={handleSubmit}>
         <fieldset disabled={disabled} className="contents disabled:cursor-not-allowed disabled:opacity-60">
           <div className="grid gap-2">
             <Label htmlFor="token">トークン</Label>
@@ -109,9 +99,6 @@ export function CreateJobFormEmbedView({ controller }: { controller: CreateJobFo
                 </span>
               </div>
             ) : null}
-            {lockedFields.token ? (
-              <p className="text-[11px] text-muted-foreground/70">この項目は埋め込み設定でロックされています。</p>
-            ) : null}
           </div>
 
           <div className="grid gap-2">
@@ -130,9 +117,6 @@ export function CreateJobFormEmbedView({ controller }: { controller: CreateJobFo
                 lockedFields.recipient && "cursor-not-allowed border-border/70 bg-muted text-muted-foreground"
               )}
             />
-            {lockedFields.recipient ? (
-              <p className="text-[11px] text-muted-foreground/70">埋め込み側で固定された受取先です。</p>
-            ) : null}
           </div>
 
           <div className="grid gap-2">
@@ -153,9 +137,6 @@ export function CreateJobFormEmbedView({ controller }: { controller: CreateJobFo
                 lockedFields.amount && "cursor-not-allowed border-border/70 bg-muted text-muted-foreground"
               )}
             />
-            {lockedFields.amount ? (
-              <p className="text-[11px] text-muted-foreground/70">送金金額は埋め込み URL から指定されています。</p>
-            ) : null}
           </div>
 
           <div className="grid gap-2">
@@ -177,43 +158,9 @@ export function CreateJobFormEmbedView({ controller }: { controller: CreateJobFo
               )}
             />
             <p className="text-xs text-muted-foreground leading-relaxed">
-              transferWithAuthorization の宛先は常に {EXECUTOR_CONTRACT_ADDRESS}（合計額）です。実行時にコントラクトが受取人と fee を振り分けます。
+              transferWithAuthorization の宛先は常に {EXECUTOR_CONTRACT_ADDRESS} です。
+              実行時にコントラクトが受取人と fee を振り分けます。
             </p>
-            {lockedFields.feeAmount ? (
-              <p className="text-[11px] text-muted-foreground/70">手数料は埋め込み URL で指定されています。</p>
-            ) : null}
-          </div>
-
-          <div className="grid gap-2">
-            <Label>有効期限</Label>
-            <div className="flex flex-col gap-2">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="flex h-10 w-full items-center justify-start gap-2 rounded-md border border-input bg-background px-3 text-left text-sm text-foreground shadow-sm transition focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  >
-                    {formattedDeadline}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={form.validDate ? new Date(`${form.validDate}T00:00`) : undefined}
-                    onSelect={handleDateSelect}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-              <Input
-                type="time"
-                step={60}
-                value={form.validTime}
-                onChange={handleTimeChange}
-                required
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">現在時刻より後を指定してください。</p>
           </div>
 
           <div>
