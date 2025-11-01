@@ -405,25 +405,6 @@ def execute_job(job_json: str):
         </ol>
       </section>
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-foreground">セキュリティとキー運用</h2>
-        <ul className="list-disc space-y-1 pl-5">
-          <li>`/api/dev/api-keys` で発行した API キーは最低でも 四半期に一度ローテーションし、古いキーを `revoked_at` で無効化する。</li>
-          <li>キーのローテ作業や BAN 変更は全て `job_events` にメモ付きで残し、オンコール手順書と紐付ける。</li>
-          <li>内部利用の <code>X-Internal-API-Key</code> も Secrets Manager / Supabase Config に保管し、アクセスログを定期的に点検する。</li>
-        </ul>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-foreground">チェックリスト</h2>
-        <ul className="list-disc space-y-1 pl-5">
-          <li>Supabase マイグレーション（`0007`〜`0010`）適用済みか。</li>
-          <li>スケジューラで `/api/admin/jobs/cleanup` を定期実行しているか。</li>
-          <li>`job_reservations` の `expired` / `failed` 件数をダッシュボード化し、異常値を検知できるようにしたか。</li>
-          <li>ファシリテーター Bot のウォレット残高・ガス監視ができているか。</li>
-          <li>エラー時のアラートとオンコール手順が明文化されているか。</li>
-        </ul>
-      </section>
     </article>
   );
 }
