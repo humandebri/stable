@@ -4,9 +4,8 @@ export default function WhitepaperPage() {
       <header className="space-y-4 text-foreground">
         <h1 className="text-4xl font-semibold tracking-tight">Paylancer ホワイトペーパー</h1>
         <p>
-          Paylancer は「あとで確実に支払う」というユーザーの意思をトークン化し、誰でも安全に扱える形で流通させるための仕組みです。
-          本稿では、内蔵する技術の細部ではなく、<strong>どのような仕組みで動き、利用者と運営者がどのようなメリットを得られるか</strong>
-          を丁寧に説明します。
+          Paylancer は「支払う」という意思を安全に約束へ変換し、誰もが安心して受け渡しできるようにする仕組みです。
+          ここでは細かな技術仕様ではなく、<strong>どのように機能し、利用者と運営者の双方にどんな価値をもたらすのか</strong> を丁寧にお伝えします。
         </p>
       </header>
 
@@ -15,7 +14,7 @@ export default function WhitepaperPage() {
         <p>
           従来のファシリテーターは、特定のチームや企業が中央集権的に運営するケースがほとんどでした。運営が活動を停止した瞬間に、
           利用者が預けていた支払い依頼は宙に浮き、誰も実行しないまま期限を迎えるリスクが常につきまといます。
-          「このサービスが明日も続いているか」という不確実性が、利用者にとって最大の不安要素でした。
+          「このサービスが明日も続いているか」という不確実性が、利用者にとって最大の不安要素です。
         </p>
         <p>
           さらに、多くのファシリテーターは安定した報酬モデルを持たず、ボランティア的に運用されていました。
@@ -32,9 +31,9 @@ export default function WhitepaperPage() {
         <p className="font-semibold text-foreground">(1) ユーザーが支払い指示を作成する</p>
         <p>
           ユーザーは Paylancer のフォームや埋め込みウィジェットを通じて、支払いたい金額・受取人・手数料などを入力します。
-          ウォレットはその内容を「あとで送金して良い」という承認（Authorization）として署名し、Paylancer に送信します。
-          この承認は EIP-3009 という標準に基づくもので、トークン保有者があらかじめ移転に同意したことを暗号署名として示し、後から別の人が実行できる仕組みです。
-          鍵を預ける必要がなく、署名が有効な期間や支払い ID を細かく指定できるため、ユーザーにとって安全で柔軟な「あと払い」が実現します。
+          ウォレットはその内容を承認（Authorization）して署名し、さらに誰に・いくら送るかを束ねた bundle 署名（EIP-712）も同時に作成します。
+          EIP-3009 に基づく Authorization では、トークン保有者があらかじめ移転に同意したことを暗号署名として示し、後から別の人が実行できます。
+          bundle 署名には支払い ID（paymentId）や締め切りなどの条件が含まれており、ウォレット鍵を預けることなく細かな制約を付与できるため、ユーザーにとって安全で柔軟な「あと払い」が実現します。
         </p>
         <p className="font-semibold text-foreground">(2) Paylancer が予約として保護し、検証ログを残す</p>
         <p>
@@ -56,8 +55,9 @@ export default function WhitepaperPage() {
         </p>
         <p className="font-semibold text-foreground">(5) Executor が支払いと報酬を配分する</p>
         <p>
-          オンチェーンでは `ERC3009Executor` コントラクトが bundle 署名と `paymentId` の再利用をチェックし、`transferWithAuthorization` を使って支払い主から main+fee を引き出します。
-          受け取った資金は受取人へ送金しつつ、fee をオペレーターとファシリテーターで自動分配します。これにより「支払いが実行されると同時に、関係者が正しく報酬を受け取る」ことがプロトコルレベルで保証されます。
+          オンチェーンでは `ERC3009Executor` コントラクト（<code>0x1dF5e0f118f54190303Db09D1091d7cAed26F175</code>）が、bundle 署名と `paymentId` の再利用を検証したうえで `transferWithAuthorization` を呼び出し、支払い主から main+fee をまとめて引き出します。
+          その後、mainAmount を受取人へ、feeAmount をトランザクションを実行したファシリテーターとPlaylancerトレジャリーに自動分配します。bundle 署名には支払い ID と締め切りが含まれるため、署名が改ざんされていないか、期限を過ぎていないかをコントラクト側で再確認できます。
+          こうして「支払いが実行されると同時に、関係者が正しく報酬を受け取る」という約束がプロトコルレベルで担保され、運営がいなくても持続可能な仕組みになります。
         </p>
         <p className="font-semibold text-foreground">(6) ジョブのライフサイクルとクリーンアップ</p>
         <p>
