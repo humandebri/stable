@@ -259,12 +259,12 @@ export default function EmbedDocsPage() {
           実際に iframe を配置すると以下のように表示されます。デザイン調整の参考としてご覧ください（サンプルのため本番ドメインに置き換えてご利用ください）。
         </p>
 
-        <div className="overflow-hidden rounded-xl border border-border/70">
+        <div className="overflow-hidden rounded-lg border border-border bg-white shadow-sm">
           <iframe
-            src={`${PAYLANCER_BASE_URL}/embed/ticket?token=0x1111111111111111111111111111111111111111&recipient=0x2222222222222222222222222222222222222222&amount=150&fee=0.75`}
+            src={`${PAYLANCER_BASE_URL}/embed/ticket?token=0xE7C3D8C9a439feDe00D2600032D5dB0Be71C3c29&recipient=0x2222222222222222222222222222222222222222&amount=150&fee=0.75`}
             title="Paylancer Ticket Preview (Prefilled)"
-            className="h-[680px] w-full"
-            style={{ border: "0" }}
+            className="h-[700px] w-full"
+            style={{ border: "0", backgroundColor: "#ffffff" }}
             scrolling="no"
             allow="clipboard-write"
           />
