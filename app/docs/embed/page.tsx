@@ -164,6 +164,22 @@ export default function EmbedDocsPage() {
       </section>
 
       <section className="space-y-4">
+        <h2 className="text-xl font-semibold text-foreground">ステータス確認 API</h2>
+        <p className="text-sm text-muted-foreground">
+          トランザクション完了を検知したい場合は、ジョブ作成時に取得した `paymentId` または `job.id` を使って
+          `/api/jobs/status` をポーリングしてください。レスポンスには最新ステータスと直近のイベントが含まれます。
+        </p>
+        <pre className="overflow-auto rounded-lg border border-border/60 bg-muted/40 p-4 text-xs leading-relaxed text-foreground">
+{`curl -X GET ${PAYLANCER_BASE_URL}/api/jobs/status?paymentId=0x1234... \
+  -H 'X-API-Key: <YOUR_PAYLANCER_API_KEY>'`}
+        </pre>
+        <p className="text-xs text-muted-foreground">
+          ステータスが `executed` になったタイミングで完了として扱えます。`events` 配列には最新 3 件の `job_events`
+          が格納されるため、失敗理由や再試行可否の判断にも利用できます。
+        </p>
+      </section>
+
+      <section className="space-y-4">
         <h1 className="text-3xl font-semibold text-foreground">API から直接ジョブを作成したい場合</h1>
         <ol className="space-y-2 text-sm text-muted-foreground">
           {FLOW_STEPS.map((step, index) => (

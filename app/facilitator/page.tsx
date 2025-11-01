@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { formatUnits } from "viem";
@@ -15,12 +15,10 @@ import {
   CardTitle
 } from "@/components/ui/card";
 import { EXECUTOR_CONTRACT_ADDRESS } from "@/lib/config";
-import {
-  executeJob,
-  normalizeJobExecution
-} from "@/lib/jobs/executor";
+import { normalizeJobExecution } from "@/lib/jobs/executor";
 import type { JobsResponse, JobRecord } from "@/lib/jobs/types";
 import { SUPPORTED_CHAINS, getTokensForChain } from "@/lib/tokens";
+import { useExecuteJob } from "@/lib/jobs/hooks/useExecuteJob";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
@@ -38,8 +36,6 @@ function JobExecuteButton({ job, onExecuted }: JobListItemProps) {
   const { address, chainId, isConnected } = useAccount();
   const publicClient = usePublicClient({ chainId: job.chain_id });
   const { data: walletClient } = useWalletClient();
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const disabledReason = (() => {
     if (!isConnected) return "ウォレットを接続してください";
@@ -48,52 +44,40 @@ function JobExecuteButton({ job, onExecuted }: JobListItemProps) {
     if (chainId && chainId !== job.chain_id) {
       return `ウォレットのチェーンを ${formatChainName(job.chain_id)} に合わせてください`;
     }
-    if (isExecuting) return "実行中";
     return null;
   })();
 
-  const handleExecute = useCallback(async () => {
-    if (disabledReason) {
-      setError(disabledReason);
-      return;
-    }
-    if (!walletClient) return;
+  const executeJob = useExecuteJob({
+    job,
+    walletClient: walletClient!,
+    publicClient: publicClient ?? undefined,
+    executor: EXECUTOR_CONTRACT_ADDRESS as `0x${string}`
+  });
 
-    try {
-      setError(null);
-      setIsExecuting(true);
-
-      await executeJob({
-        walletClient,
-        publicClient: publicClient ?? undefined,
-        executor: EXECUTOR_CONTRACT_ADDRESS as `0x${string}`,
-        job
-      });
-
-      onExecuted?.();
-    } catch (executionError) {
-      console.error("Failed to execute job", executionError);
-      setError(
-        executionError instanceof Error
-          ? executionError.message
-          : "ジョブ実行に失敗しました"
-      );
-    } finally {
-      setIsExecuting(false);
-    }
-  }, [disabledReason, job, onExecuted, publicClient, walletClient]);
+  const handleExecute = async () => {
+    if (disabledReason) return;
+    await executeJob.execute();
+    onExecuted?.();
+  };
 
   return (
     <div className="flex flex-col items-end gap-1">
       <Button
         size="sm"
         onClick={handleExecute}
-        disabled={Boolean(disabledReason)}
+        disabled={Boolean(disabledReason) || executeJob.isLoading}
         className="text-xs"
       >
-        {isExecuting ? "実行中..." : "実行する"}
+        {executeJob.isLoading ? "実行中..." : "実行する"}
       </Button>
-      {error ? <span className="text-xs text-destructive">{error}</span> : null}
+      {disabledReason ? (
+        <span className="text-xs text-muted-foreground">{disabledReason}</span>
+      ) : null}
+      {executeJob.error ? (
+        <span className="text-xs text-destructive">
+          {executeJob.error.message ?? "ジョブ実行に失敗しました"}
+        </span>
+      ) : null}
     </div>
   );
 }
