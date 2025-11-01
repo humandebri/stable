@@ -372,37 +372,7 @@ def execute_job(job_json: str):
         <h2 className="text-xl font-semibold text-foreground">監視・ログ設計</h2>
         <ul className="list-disc space-y-1 pl-5">
           <li>ジョブ進捗ごとに `job_id` / `payment_id` / `wallet_address` / `facilitator` を含む実行ログを保存し、監査 trail として活用。</li>
-          <li>API エラー（409/400）は件数をメトリクス化し、重複登録やキー漏洩などの異常アラートに繋げる。</li>
-          <li>`job_events` テーブルに自動で蓄積されるイベント（validation_failed / reservation_conflict / job_saved 等）を Metabase や Logflare でダッシュボード化する。</li>
-          <li>期限切れジョブは `expired` ステータスへ移行するバッチ（例: cron で 5 分毎）を実装し、BAN 候補ユーザーを抽出する仕組みを用意。</li>
         </ul>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-foreground">自動クリーンアップ</h2>
-        <p>
-          Supabase スケジュール関数や外部ジョブから <code>POST /api/admin/jobs/cleanup</code> を叩くことで、
-          期限切れジョブの `expired` 化・予約の廃棄・24 時間以上経過した予約レコードの削除が一括で行えます
-          （認証には <code>X-Internal-API-Key</code> が必要）。レスポンスのサマリーは <code>job_events</code> に
-          <code>cleanup_action</code> として記録されるため、定期実行の可否チェックに利用してください。
-        </p>
-        <ul className="list-disc space-y-1 pl-5">
-          <li>推奨間隔は 5〜10 分。Supabase Scheduler / GitHub Actions / Cloud Run など任意のランナーで実行。</li>
-          <li>削除対象は過去 24 時間以上前に `completed` / `failed` / `expired` となった予約。期間は必要に応じて調整。</li>
-        </ul>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-foreground">BAN / レートリミットの運用メモ</h2>
-        <p>
-          将来的に IP / wallet / merchant 単位でのレートリミットを導入する予定です（参考: Upstash Redis / Supabase KV / self-hosted Redis）。
-          今のうちから以下の運用ポリシーを設計しておくとスムーズです。
-        </p>
-        <ol className="list-decimal space-y-1 pl-5">
-          <li>リクエスト超過時のエラーフォーマット（例: `429 Too Many Requests` + `retryAfter` 秒）をクライアントで処理する。</li>
-          <li>悪意のある署名や無効ジョブを繰り返すウォレットを BAN するテーブルを用意し、`/api/jobs` 保存前に参照する。</li>
-          <li>BAN 解除手順（どのチームが、どのログを確認して解除するか）を文書化しておく。</li>
-        </ol>
       </section>
 
     </article>
