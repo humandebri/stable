@@ -315,7 +315,7 @@ def execute_job(job_json: str):
 
     contract = w3.eth.contract(
         address=EXECUTOR_ADDRESS,
-        abi=json.load(open("erc3009ExecutorAbi.json"))
+        abi=json.load(open("lib/abi/erc3009Executor.json"))
     )
     txn = contract.functions.executeAuthorizedTransfer(params)
 
@@ -333,7 +333,7 @@ def execute_job(job_json: str):
     tx_hash = w3.eth.send_raw_transaction(signed.rawTransaction)
     return tx_hash.hex()`}
             </pre>
-            Web3.py は BigInt を自動で処理するため、数値化の際は Python の int を使用します。ABI JSON は `erc3009ExecutorAbi` をそのまま保存してください。
+            Web3.py は BigInt を自動で処理するため、数値化の際は Python の int を使用します。ABI JSON は `lib/abi/erc3009Executor.json` をそのまま利用できます。
           </li>
           <li>
             <strong>結果報告:</strong> 成功時は `status=executed`、失敗時は `status=failed` + `failReason` を送信します。
@@ -373,7 +373,22 @@ def execute_job(job_json: str):
         <ul className="list-disc space-y-1 pl-5">
           <li>ジョブ進捗ごとに `job_id` / `payment_id` / `wallet_address` / `facilitator` を含む実行ログを保存し、監査 trail として活用。</li>
           <li>API エラー（409/400）は件数をメトリクス化し、重複登録やキー漏洩などの異常アラートに繋げる。</li>
+          <li>`job_events` テーブルに自動で蓄積されるイベント（validation_failed / reservation_conflict / job_saved 等）を Metabase や Logflare でダッシュボード化する。</li>
           <li>期限切れジョブは `expired` ステータスへ移行するバッチ（例: cron で 5 分毎）を実装し、BAN 候補ユーザーを抽出する仕組みを用意。</li>
+        </ul>
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold text-foreground">自動クリーンアップ</h2>
+        <p>
+          Supabase スケジュール関数や外部ジョブから <code>POST /api/admin/jobs/cleanup</code> を叩くことで、
+          期限切れジョブの `expired` 化・予約の廃棄・24 時間以上経過した予約レコードの削除が一括で行えます
+          （認証には <code>X-Internal-API-Key</code> が必要）。レスポンスのサマリーは <code>job_events</code> に
+          <code>cleanup_action</code> として記録されるため、定期実行の可否チェックに利用してください。
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>推奨間隔は 5〜10 分。Supabase Scheduler / GitHub Actions / Cloud Run など任意のランナーで実行。</li>
+          <li>削除対象は過去 24 時間以上前に `completed` / `failed` / `expired` となった予約。期間は必要に応じて調整。</li>
         </ul>
       </section>
 
@@ -391,10 +406,20 @@ def execute_job(job_json: str):
       </section>
 
       <section className="space-y-4">
+        <h2 className="text-xl font-semibold text-foreground">セキュリティとキー運用</h2>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>`/api/dev/api-keys` で発行した API キーは最低でも 四半期に一度ローテーションし、古いキーを `revoked_at` で無効化する。</li>
+          <li>キーのローテ作業や BAN 変更は全て `job_events` にメモ付きで残し、オンコール手順書と紐付ける。</li>
+          <li>内部利用の <code>X-Internal-API-Key</code> も Secrets Manager / Supabase Config に保管し、アクセスログを定期的に点検する。</li>
+        </ul>
+      </section>
+
+      <section className="space-y-4">
         <h2 className="text-xl font-semibold text-foreground">チェックリスト</h2>
         <ul className="list-disc space-y-1 pl-5">
-          <li>Supabase マイグレーション（`0007` / `0008`）適用済みか。</li>
-          <li>定期的に `job_reservations` の `expired` を削除し、統計ダッシュボードへ反映しているか。</li>
+          <li>Supabase マイグレーション（`0007`〜`0010`）適用済みか。</li>
+          <li>スケジューラで `/api/admin/jobs/cleanup` を定期実行しているか。</li>
+          <li>`job_reservations` の `expired` / `failed` 件数をダッシュボード化し、異常値を検知できるようにしたか。</li>
           <li>ファシリテーター Bot のウォレット残高・ガス監視ができているか。</li>
           <li>エラー時のアラートとオンコール手順が明文化されているか。</li>
         </ul>

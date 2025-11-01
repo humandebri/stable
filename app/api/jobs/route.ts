@@ -12,6 +12,7 @@ import type {
 } from "@/lib/jobs/types";
 import { findTokenConfig, getTokenAmountLimits } from "@/lib/tokens";
 import type { SupportedTokenConfig } from "@/lib/tokens";
+import { logJobEvent } from "@/lib/jobs/events";
 
 type AuthorizationPayload = {
   from: `0x${string}`;
@@ -142,7 +143,7 @@ function normalizeBundle(bundle: BundleRecord | null | undefined): BundleRecord 
   };
 }
 
-function validatePayload(payload: CreateJobPayload): NormalizedJobPayload {
+export function validatePayload(payload: CreateJobPayload): NormalizedJobPayload {
   if (typeof payload.chainId !== "number" || Number.isNaN(payload.chainId)) {
     throw new Error("chainId must be a number");
   }
@@ -299,21 +300,45 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const supabase = createSupabaseServerClient();
   let jobPayload: CreateJobPayload;
 
   try {
     jobPayload = await request.json();
   } catch (error) {
+    await logJobEvent(supabase, {
+      eventType: "validation_failed",
+      statusCode: 400,
+      message: "Invalid JSON payload"
+    });
     return NextResponse.json(
       { error: "Invalid JSON payload" },
       { status: 400 }
     );
   }
 
+  const requestedPaymentId =
+    jobPayload.paymentId ?? jobPayload.bundle?.paymentId ?? null;
+  await logJobEvent(supabase, {
+    eventType: "request_received",
+    paymentId: requestedPaymentId,
+    metadata: {
+      chainId: jobPayload.chainId,
+      token: jobPayload.token,
+      merchantId: jobPayload.merchantId ?? null
+    }
+  });
+
   let normalized: ReturnType<typeof validatePayload>;
   try {
     normalized = validatePayload(jobPayload);
   } catch (error) {
+    await logJobEvent(supabase, {
+      eventType: "validation_failed",
+      statusCode: 400,
+      message: (error as Error).message,
+      paymentId: requestedPaymentId
+    });
     return NextResponse.json(
       { error: (error as Error).message },
       { status: 400 }
@@ -322,18 +347,36 @@ export async function POST(request: Request) {
 
   const nowSeconds = Math.floor(Date.now() / 1000);
   if (normalized.validBefore <= nowSeconds) {
+    await logJobEvent(supabase, {
+      eventType: "validation_failed",
+      statusCode: 400,
+      message: "authorization.validBefore has already passed",
+      paymentId: normalized.paymentId
+    });
     return NextResponse.json(
       { error: "authorization.validBefore has already passed" },
       { status: 400 }
     );
   }
   if (normalized.validAfter > nowSeconds) {
+    await logJobEvent(supabase, {
+      eventType: "validation_failed",
+      statusCode: 400,
+      message: "authorization.validAfter has not started yet",
+      paymentId: normalized.paymentId
+    });
     return NextResponse.json(
       { error: "authorization.validAfter has not started yet" },
       { status: 400 }
     );
   }
   if (normalized.bundleDeadline <= nowSeconds) {
+    await logJobEvent(supabase, {
+      eventType: "validation_failed",
+      statusCode: 400,
+      message: "bundle.deadline has already passed",
+      paymentId: normalized.paymentId
+    });
     return NextResponse.json(
       { error: "bundle.deadline has already passed" },
       { status: 400 }
@@ -349,7 +392,6 @@ export async function POST(request: Request) {
   ).toISOString();
   const timestampNowIso = new Date().toISOString();
 
-  const supabase = createSupabaseServerClient();
   let reservationId: string | null = null;
 
   const markReservationFailed = async (reason: string) => {
@@ -359,6 +401,7 @@ export async function POST(request: Request) {
         .from("job_reservations")
         .update({
           status: "failed",
+          job_id: null,
           last_error: reason.slice(0, 500),
           updated_at: new Date().toISOString()
         })
@@ -368,13 +411,14 @@ export async function POST(request: Request) {
     }
   };
 
-  const markReservationCompleted = async () => {
+  const markReservationCompleted = async (jobId: string) => {
     if (!reservationId) return;
     try {
       await supabase
         .from("job_reservations")
         .update({
           status: "completed",
+          job_id: jobId,
           last_error: null,
           updated_at: new Date().toISOString()
         })
@@ -407,12 +451,24 @@ export async function POST(request: Request) {
   if (reservationInsertResult.error) {
     const { error } = reservationInsertResult;
     if ("code" in error && error.code === "23505") {
+      await logJobEvent(supabase, {
+        eventType: "reservation_conflict",
+        statusCode: 409,
+        message: "Duplicate paymentId or authorization nonce",
+        paymentId: normalized.paymentId
+      });
       return NextResponse.json(
         { error: "Duplicate paymentId or authorization nonce" },
         { status: 409 }
       );
     }
     console.error("Failed to create job reservation", error);
+    await logJobEvent(supabase, {
+      eventType: "api_error",
+      statusCode: 500,
+      message: "Failed to create job reservation",
+      paymentId: normalized.paymentId
+    });
     return NextResponse.json(
       { error: "Failed to create job reservation" },
       { status: 500 }
@@ -447,6 +503,12 @@ export async function POST(request: Request) {
 
     if (!signatureValid) {
       await markReservationFailed("bundle signature verification failed");
+      await logJobEvent(supabase, {
+        eventType: "validation_failed",
+        statusCode: 400,
+        message: "bundle signature verification failed",
+        paymentId: normalized.paymentId
+      });
       return NextResponse.json(
         { error: "bundle signature verification failed" },
         { status: 400 }
@@ -456,6 +518,12 @@ export async function POST(request: Request) {
     const message =
       error instanceof Error ? error.message : "bundle signature verification failed";
     await markReservationFailed(message);
+    await logJobEvent(supabase, {
+      eventType: "validation_failed",
+      statusCode: 400,
+      message,
+      paymentId: normalized.paymentId
+    });
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
@@ -488,14 +556,32 @@ export async function POST(request: Request) {
 
     if (error) {
       await markReservationFailed(error.message ?? "failed to save job");
+      await logJobEvent(supabase, {
+        eventType: "api_error",
+        statusCode: 500,
+        message: error.message ?? "Failed to save job",
+        paymentId: normalized.paymentId
+      });
       throw error;
     }
 
-    await markReservationCompleted();
+    await markReservationCompleted(data.id as string);
+    await logJobEvent(supabase, {
+      eventType: "job_saved",
+      statusCode: 201,
+      jobId: data.id as string,
+      paymentId: normalized.paymentId
+    });
 
     return NextResponse.json({ job: data }, { status: 201 });
   } catch (error) {
     console.error("Failed to insert job", error);
+    await logJobEvent(supabase, {
+      eventType: "api_error",
+      statusCode: 500,
+      message: error instanceof Error ? error.message : "Failed to save job",
+      paymentId: normalized.paymentId
+    });
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Failed to save job"
