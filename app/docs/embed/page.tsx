@@ -117,6 +117,54 @@ const ADMIN_CREATE_KEY_SNIPPET = `curl -X POST ${PAYLANCER_BASE_URL}/api/admin/a
   -H 'X-Internal-API-Key: <INTERNAL_API_SECRET>' \\
   -d '{ "name": "staging backend" }'`;
 
+const STATUS_POLL_SNIPPET = `import { useEffect, useState } from "react";
+
+export function usePaymentStatus(paymentId) {
+  const [status, setStatus] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!paymentId) return;
+
+    let active = true;
+    const controller = new AbortController();
+
+    const tick = async () => {
+      try {
+        const res = await fetch(
+          \`/api/jobs/status?paymentId=\${paymentId}\`,
+          {
+            headers: { 'X-API-Key': '<YOUR_PAYLANCER_API_KEY>' },
+            signal: controller.signal
+          }
+        );
+        if (!res.ok) throw new Error('ステータス取得に失敗しました');
+        const data = await res.json();
+        if (!active) return;
+        setStatus(data.job.status);
+        if (data.job.status !== 'pending' && data.job.status !== 'processing') {
+          return; // 完了したらポーリング終了
+        }
+        timeout = window.setTimeout(tick, 5000);
+      } catch (err) {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : String(err));
+        timeout = window.setTimeout(tick, 10000);
+      }
+    };
+
+    let timeout = window.setTimeout(tick, 0);
+
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [paymentId]);
+
+  return { status, error };
+}`;
+
 export default function EmbedDocsPage() {
   return (
     <article className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-4 py-10">
@@ -176,6 +224,15 @@ export default function EmbedDocsPage() {
         <p className="text-xs text-muted-foreground">
           ステータスが `executed` になったタイミングで完了として扱えます。`events` 配列には最新 3 件の `job_events`
           が格納されるため、失敗理由や再試行可否の判断にも利用できます。
+        </p>
+        <p className="text-sm text-muted-foreground">
+          React で簡易的にポーリングする場合は、以下の Hook サンプルを参考にしてください。
+        </p>
+        <pre className="overflow-auto rounded-lg border border-border/60 bg-muted/40 p-4 text-xs leading-relaxed text-foreground">
+          <code>{STATUS_POLL_SNIPPET}</code>
+        </pre>
+        <p className="text-xs text-muted-foreground">
+          `status` が `executed` / `failed` など終端ステータスになった時点でポーリングが終了します。`error` は通信失敗時に表示用として利用できます。
         </p>
       </section>
 
